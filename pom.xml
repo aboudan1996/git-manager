@@ -138,11 +138,10 @@
                         <!-- Default configuration for running with: mvn clean javafx:run -->
                         <id>default-cli</id>
                         <configuration>
-                            <mainClass>com.git.client/com.git.client.GitDeskApplication
-                            </mainClass>
-                            <launcher>app</launcher>
-                            <jlinkZipName>app</jlinkZipName>
-                            <jlinkImageName>app</jlinkImageName>
+                            <mainClass>com.git.client/com.git.client.Launcher</mainClass>
+                            <launcher>gitdesk</launcher>
+                            <jlinkZipName>gitdesk</jlinkZipName>
+                            <jlinkImageName>gitdesk-runtime</jlinkImageName>
                             <noManPages>true</noManPages>
                             <stripDebug>true</stripDebug>
                             <noHeaderFiles>true</noHeaderFiles>
