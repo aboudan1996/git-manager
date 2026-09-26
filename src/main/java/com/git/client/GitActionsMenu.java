@@ -28,9 +28,10 @@ final class GitActionsMenu {
         Stage owner();
         GitRepositoryService repository();
         GitRepositoryService.CommitEntry selectedCommit(String action);
-        void repositoryAction(RepositoryAction action);
-        void remoteAction(RemoteAction action);
+        void repositoryAction(String operation, RepositoryAction action);
+        void remoteAction(String operation, RemoteAction action);
         void setStatus(String text);
+        void logInfo(String message);
         void showError(String title, Throwable error);
         void showMessage(String title, String message);
         void clone(String url, String username, char[] secret, Path destination);
@@ -59,9 +60,9 @@ final class GitActionsMenu {
         menu.getItems().clear();
         if (hasRepository) {
             menu.setText("Git actions");
-            addAction("Fetch", () -> actions.remoteAction(() -> actions.repository().fetch()));
-            addAction("Pull", () -> actions.remoteAction(() -> actions.repository().pull()));
-            addAction("Push", () -> actions.remoteAction(() -> actions.repository().push()));
+            addAction("Fetch", () -> actions.remoteAction("Fetch", () -> actions.repository().fetch()));
+            addAction("Pull", () -> actions.remoteAction("Pull", () -> actions.repository().pull()));
+            addAction("Push", () -> actions.remoteAction("Push", () -> actions.repository().push()));
             menu.getItems().add(new javafx.scene.control.SeparatorMenuItem());
             addAction("Set HTTPS credentials...", this::setHttpsCredentials);
             addAction("Add remote...", this::addRemote);
@@ -73,16 +74,16 @@ final class GitActionsMenu {
             addAction("Rebase onto...", () -> chooseBranch("Rebase onto", actions.repository()::rebase));
             addAction("Cherry-pick selected commit", this::cherryPickSelected);
             addAction("Revert selected commit", this::revertSelected);
-            addAction("Continue rebase", () -> actions.repositoryAction(() ->
+            addAction("Continue rebase", () -> actions.repositoryAction("Continue rebase", () ->
                     actions.setStatus(actions.repository().continueRebase())));
-            addAction("Abort rebase", () -> actions.repositoryAction(() ->
+            addAction("Abort rebase", () -> actions.repositoryAction("Abort rebase", () ->
                     actions.setStatus(actions.repository().abortRebase())));
             menu.getItems().add(new javafx.scene.control.SeparatorMenuItem());
-            addAction("Stash changes", () -> actions.repositoryAction(
+            addAction("Stash changes", () -> actions.repositoryAction("Stash changes",
                     () -> actions.repository().stash()));
-            addAction("Apply latest stash", () -> actions.repositoryAction(() ->
+            addAction("Apply latest stash", () -> actions.repositoryAction("Apply latest stash", () ->
                     actions.setStatus(actions.repository().applyLatestStash(false))));
-            addAction("Pop latest stash", () -> actions.repositoryAction(() ->
+            addAction("Pop latest stash", () -> actions.repositoryAction("Pop latest stash", () ->
                     actions.setStatus(actions.repository().applyLatestStash(true))));
         } else {
             menu.setText("Recent repositories");
@@ -136,7 +137,8 @@ final class GitActionsMenu {
             char[] secret = password.getText().toCharArray();
             try {
                 actions.repository().setHttpsCredentials(username.getText(), secret);
-                actions.setStatus("HTTPS credentials set for this session.");
+                actions.setStatus("HTTPS credentials configured successfully for this session.");
+                actions.logInfo("HTTPS credentials were configured for the current session.");
             } catch (IllegalArgumentException exception) {
                 actions.showError("Invalid credentials", exception);
             } finally {
@@ -167,7 +169,7 @@ final class GitActionsMenu {
                 nameDialog.setTitle("Create branch");
                 nameDialog.setHeaderText("The new branch will start from " + startPoint);
                 nameDialog.setContentText("Branch name:");
-                nameDialog.showAndWait().ifPresent(name -> actions.repositoryAction(() -> {
+                nameDialog.showAndWait().ifPresent(name -> actions.repositoryAction("Create branch", () -> {
                     String actualRevision = revision;
                     if (startPoint.contains(" — ")) {
                         actualRevision = actions.repository().getHistory().stream()
@@ -195,7 +197,7 @@ final class GitActionsMenu {
             urlDialog.setTitle("Add remote");
             urlDialog.setHeaderText("Enter the remote URL");
             urlDialog.setContentText("Remote URL:");
-            urlDialog.showAndWait().ifPresent(url -> actions.repositoryAction(
+            urlDialog.showAndWait().ifPresent(url -> actions.repositoryAction("Add remote",
                     () -> actions.repository().addRemote(name, url)));
         });
     }
@@ -264,7 +266,7 @@ final class GitActionsMenu {
             dialog.initOwner(actions.owner());
             dialog.setTitle(title); dialog.setHeaderText(title);
             dialog.setContentText("Select a local branch:");
-            dialog.showAndWait().ifPresent(branch -> actions.repositoryAction(
+            dialog.showAndWait().ifPresent(branch -> actions.repositoryAction(title,
                     () -> actions.setStatus(action.run(branch))));
         } catch (IOException | GitAPIException exception) {
             actions.showError("Could not list branches", exception);
@@ -273,7 +275,7 @@ final class GitActionsMenu {
 
     private void cherryPickSelected() {
         GitRepositoryService.CommitEntry selected = actions.selectedCommit("Cherry-pick");
-        if (selected != null) actions.repositoryAction(() ->
+        if (selected != null) actions.repositoryAction("Cherry-pick commit", () ->
                 actions.setStatus(actions.repository().cherryPick(selected.objectId())));
     }
 
@@ -286,7 +288,7 @@ final class GitActionsMenu {
         confirmation.setHeaderText("Create a new commit that reverses this change?");
         confirmation.setContentText(selected.shortId() + "  " + selected.message());
         if (confirmation.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
-            actions.repositoryAction(() ->
+            actions.repositoryAction("Revert commit", () ->
                     actions.setStatus(actions.repository().revert(selected.objectId())));
         }
     }

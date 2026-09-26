@@ -87,6 +87,14 @@
     -fx-font-size: 11px;
 }
 
+.status-success {
+    -fx-text-fill: #79d69a;
+}
+
+.status-error {
+    -fx-text-fill: #f08b94;
+}
+
 .list-view,
 .change-list {
     -fx-background-color: #191c23;

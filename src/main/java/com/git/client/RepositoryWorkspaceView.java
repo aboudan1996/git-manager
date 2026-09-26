@@ -279,6 +279,7 @@ final class RepositoryWorkspaceView {
         conflicts.setItems(FXCollections.observableArrayList(conflictPaths));
         setVisibleManaged(conflictPane, !conflictPaths.isEmpty());
         setVisibleManaged(commitPane, !stagedPaths.isEmpty());
+        status.getStyleClass().setAll("status-label");
         status.setText(statusText);
         allCommits = List.copyOf(commits);
         filterHistory(search.getText());
@@ -295,6 +296,7 @@ final class RepositoryWorkspaceView {
         allCommits = List.of();
         diffLines.getChildren().clear();
         commitMessage.clear();
+        status.getStyleClass().setAll("status-label");
         status.setText("Open a repository to get started.");
         setVisibleManaged(commitPane, false);
         setVisibleManaged(conflictPane, false);
@@ -319,7 +321,17 @@ final class RepositoryWorkspaceView {
         updateCommitEnabled();
     }
 
-    void setOperationStatus(String text) { status.setText(text); }
+    void setOperationStatus(String text) {
+        status.getStyleClass().setAll("status-label");
+        if (text != null && (text.toLowerCase().contains("failed")
+                || text.toLowerCase().contains("conflict"))) {
+            status.getStyleClass().add("status-error");
+        } else if (text != null && (text.toLowerCase().contains("successfully")
+                || text.toLowerCase().contains("completed"))) {
+            status.getStyleClass().add("status-success");
+        }
+        status.setText(text);
+    }
 
     void showCommit(GitRepositoryService.CommitEntry commit, List<String> files, String diff) {
         changesTitle.setText("Committed changes");

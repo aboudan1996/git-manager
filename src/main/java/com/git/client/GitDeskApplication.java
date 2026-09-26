@@ -28,6 +28,7 @@ import java.util.List;
 
 /** JavaFX bootstrap and coordinator for the open repository tabs and Git operations. */
 public class GitDeskApplication extends Application {
+    private final LogService logService = new LogService();
     private final RecentRepositoryStore recentStore = new RecentRepositoryStore();
     private final RepositoryTabManager repositoryTabs = new RepositoryTabManager();
     private final MenuButton repositoryLabel = new MenuButton("No repository open");
@@ -46,6 +47,8 @@ public class GitDeskApplication extends Application {
     @Override
     public void start(Stage stage) {
         this.stage = stage;
+        logService.info("GitDesk application started.");
+        logService.info("Application log file: " + logService.logFile().toAbsolutePath());
         activeWorkspace = new RepositoryWorkspaceView(stage, workspaceActions());
         actionsMenu = new GitActionsMenu(actionsButton, menuActions());
         repositoryTabs.onSelection(this::activateRepositoryTab);
@@ -79,19 +82,19 @@ public class GitDeskApplication extends Application {
         return new RepositoryWorkspaceView.Actions() {
             @Override public void openRecent(String path) { openRepository(Path.of(path)); }
             @Override public void stageSelected(List<String> paths) {
-                runRepositoryAction(() -> repositoryService.stage(paths));
+                runRepositoryAction("Stage selected changes", () -> repositoryService.stage(paths));
             }
             @Override public void unstageSelected(List<String> paths) {
-                runRepositoryAction(() -> repositoryService.unstage(paths));
+                runRepositoryAction("Unstage selected changes", () -> repositoryService.unstage(paths));
             }
             @Override public void stageAll() {
-                runRepositoryAction(() -> repositoryService.stageAll());
+                runRepositoryAction("Stage all changes", () -> repositoryService.stageAll());
             }
             @Override public void unstageAll() {
-                runRepositoryAction(() -> repositoryService.unstageAll());
+                runRepositoryAction("Unstage all changes", () -> repositoryService.unstageAll());
             }
             @Override public void commit(String message) {
-                runRepositoryAction(() -> {
+                runRepositoryAction("Commit", () -> {
                     repositoryService.commit(message);
                     workspace().clearCommitMessage();
                 });
@@ -101,7 +104,7 @@ public class GitDeskApplication extends Application {
             }
             @Override public void showConflictDiff(String path) { updateConflictDiff(path); }
             @Override public void resolveConflict(String path, String contents) {
-                runRepositoryAction(() -> repositoryService.resolveConflict(path, contents));
+                runRepositoryAction("Resolve conflict", () -> repositoryService.resolveConflict(path, contents));
             }
             @Override public void loadConflict(String path) { openConflictEditor(path); }
             @Override public void historySelected(GitRepositoryService.CommitEntry commit) {
@@ -122,13 +125,14 @@ public class GitDeskApplication extends Application {
                 if (selected == null) showMessage(action, "Select a commit in the history first.");
                 return selected;
             }
-            @Override public void repositoryAction(GitActionsMenu.RepositoryAction action) {
-                runRepositoryAction(action::run);
+            @Override public void repositoryAction(String operation, GitActionsMenu.RepositoryAction action) {
+                runRepositoryAction(operation, action::run);
             }
-            @Override public void remoteAction(GitActionsMenu.RemoteAction action) {
-                runRemoteAction(action::run);
+            @Override public void remoteAction(String operation, GitActionsMenu.RemoteAction action) {
+                runRemoteAction(operation, action::run);
             }
             @Override public void setStatus(String text) { setStatusText(text); }
+            @Override public void logInfo(String message) { logService.info(message); }
             @Override public void showError(String title, Throwable error) {
                 GitDeskApplication.this.showError(title, error);
             }
@@ -217,6 +221,7 @@ public class GitDeskApplication extends Application {
             return;
         }
         repositoryTabs.add(directory, service);
+        logService.info("Opened repository: " + path);
         recentStore.remember(directory);
         refreshRecentRepositoryList();
         configureActionsMenu();
@@ -293,6 +298,7 @@ public class GitDeskApplication extends Application {
             createRepositoryTab(directory, opened);
             if (!remember) recentStore.setLastRepository(path);
         } catch (IOException exception) {
+            logService.error("Could not open repository at " + path, exception);
             showError("Could not open repository", exception);
         }
     }
@@ -313,26 +319,34 @@ public class GitDeskApplication extends Application {
                     repositoryService.getHistory(), status);
             updateControls();
         } catch (IOException | GitAPIException exception) {
+            logService.error("Could not refresh repository state.", exception);
             showError("Could not refresh repository", exception);
         }
     }
 
-    private void runRepositoryAction(GitActionsMenu.RepositoryAction action) {
+    private void runRepositoryAction(String operation, GitActionsMenu.RepositoryAction action) {
         if (repositoryService == null) return;
+        logService.info(operation + " started.");
+        setStatusText(operation + " in progress...");
         try {
             action.run();
             refreshRepository();
+            setStatusText(operation + " completed successfully.");
+            logService.info(operation + " completed successfully.");
         } catch (IOException | GitAPIException | IllegalArgumentException exception) {
+            logService.error(operation + " failed.", exception);
+            setStatusText(operation + " failed: " + errorMessage(exception));
             showError("Git operation failed", exception);
         }
     }
 
-    private void runRemoteAction(GitActionsMenu.RemoteAction action) {
+    private void runRemoteAction(String operation, GitActionsMenu.RemoteAction action) {
         if (repositoryService == null || actionsButton.isDisabled()) return;
         actionsMenuBusy = true;
         operationRunning = true;
         updateControls();
-        setStatusText("Running Git operation...");
+        logService.info(operation + " started.");
+        setStatusText(operation + " in progress...");
         Task<String> task = new Task<>() {
             @Override protected String call() throws Exception { return action.run(); }
         };
@@ -340,14 +354,32 @@ public class GitDeskApplication extends Application {
             actionsMenuBusy = false;
             operationRunning = false;
             refreshRepository();
-            setStatusText(task.getValue());
+            String result = task.getValue();
+            String detail = result == null ? "" : result.trim();
+            boolean hasIssue = detail.toLowerCase().contains("failed")
+                    || detail.toLowerCase().contains("conflict");
+            if (hasIssue) {
+                setStatusText(detail);
+                logService.warning(operation + " finished with a non-success result: " + detail);
+                if (detail.toLowerCase().contains("failed")) {
+                    showError(operation + " failed", new IllegalStateException(detail));
+                }
+            } else {
+                setStatusText(detail.isBlank()
+                        ? operation + " completed successfully."
+                        : operation + " completed successfully. " + detail);
+                logService.info(operation + " completed successfully."
+                        + (detail.isBlank() ? "" : " Result: " + detail));
+            }
         });
         task.setOnFailed(event -> {
             actionsMenuBusy = false;
             operationRunning = false;
-            setStatusText("Git operation failed.");
+            Throwable failure = task.getException();
+            logService.error(operation + " failed.", failure);
+            setStatusText(operation + " failed: " + errorMessage(failure));
             updateControls();
-            showError("Git operation failed", task.getException());
+            showError(operation + " failed", failure);
         });
         Thread worker = new Thread(task, "git-network-operation");
         worker.setDaemon(true);
@@ -356,7 +388,8 @@ public class GitDeskApplication extends Application {
 
     private void cloneRepository(String url, String username, char[] secret, Path destination) {
         operationRunning = true;
-        setStatusText("Cloning repository...");
+        logService.info("Clone started for destination " + destination.toAbsolutePath().normalize());
+        setStatusText("Clone in progress...");
         updateControls();
         Task<GitRepositoryService> task = new Task<>() {
             @Override protected GitRepositoryService call() throws Exception {
@@ -370,15 +403,19 @@ public class GitDeskApplication extends Application {
         task.setOnSucceeded(event -> {
             operationRunning = false;
             createRepositoryTab(destination, task.getValue());
-            setStatusText("Repository cloned.");
+            setStatusText("Repository cloned successfully.");
+            logService.info("Clone completed successfully at "
+                    + destination.toAbsolutePath().normalize());
             updateControls();
         });
         task.setOnFailed(event -> {
             actionsMenuBusy = false;
             operationRunning = false;
-            setStatusText("Clone failed.");
+            Throwable failure = task.getException();
+            logService.error("Clone failed.", failure);
+            setStatusText("Clone failed: " + errorMessage(failure));
             updateControls();
-            showError("Clone failed", task.getException());
+            showError("Clone failed", failure);
         });
         Thread worker = new Thread(task, "git-clone-operation");
         worker.setDaemon(true);
@@ -438,8 +475,7 @@ public class GitDeskApplication extends Application {
 
     private void updateControls() {
         boolean hasRepository = repositoryService != null;
-        actionsButton.setDisable(operationRunning || actionsMenuBusy
-                || (!hasRepository && recentStore.recentRepositories().isEmpty()));
+        actionsButton.setDisable(operationRunning || actionsMenuBusy);
         openRepositoryButton.setDisable(operationRunning);
         cloneRepositoryButton.setDisable(operationRunning);
         refreshButton.setDisable(!hasRepository || operationRunning);
@@ -466,14 +502,21 @@ public class GitDeskApplication extends Application {
         alert.initOwner(stage);
         alert.setTitle(title);
         alert.setHeaderText(title);
-        alert.setContentText(exception.getMessage() == null
-                ? exception.getClass().getSimpleName() : exception.getMessage());
+        alert.setContentText(errorMessage(exception));
         alert.showAndWait();
+    }
+
+    private String errorMessage(Throwable exception) {
+        if (exception == null) return "Unknown error.";
+        return exception.getMessage() == null
+                ? exception.getClass().getSimpleName() : exception.getMessage();
     }
 
     @Override
     public void stop() {
         persistOpenRepositories();
         repositoryTabs.closeAll();
+        logService.info("GitDesk application stopped.");
+        logService.close();
     }
 }
