@@ -45,7 +45,7 @@ public final class GitRepositoryService implements AutoCloseable {
             if (stored != null) {
                 try {
                     credentialsProvider = new UsernamePasswordCredentialsProvider(
-                            stored.username(), stored.secret());
+                            stored.username(), stored.secret().clone());
                     credentialsPersisted = true;
                 } finally {
                     java.util.Arrays.fill(stored.secret(), '\0');
