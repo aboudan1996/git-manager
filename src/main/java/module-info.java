@@ -5,4 +5,5 @@ module com.git.client {
     requires java.prefs;
     requires java.logging;
     exports com.git.client;
+
 }
