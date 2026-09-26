@@ -30,12 +30,28 @@ public final class GitRepositoryService implements AutoCloseable {
     private final Git git;
     private final GitDiffHistoryService diffHistoryService;
     private final GitConflictResolutionService conflictResolutionService;
+    private final WindowsCredentialStore credentialStore = new WindowsCredentialStore();
+    private final String credentialTarget;
     private CredentialsProvider credentialsProvider;
+    private boolean credentialsPersisted;
 
-    private GitRepositoryService(Git git) {
+    private GitRepositoryService(Git git) throws IOException {
         this.git = git;
         this.diffHistoryService = new GitDiffHistoryService(git.getRepository());
         this.conflictResolutionService = new GitConflictResolutionService(git);
+        this.credentialTarget = credentialStore.targetFor(git.getRepository().getWorkTree().toPath());
+        if (credentialStore.isSupported()) {
+            WindowsCredentialStore.StoredCredentials stored = credentialStore.load(credentialTarget);
+            if (stored != null) {
+                try {
+                    credentialsProvider = new UsernamePasswordCredentialsProvider(
+                            stored.username(), stored.secret());
+                    credentialsPersisted = true;
+                } finally {
+                    java.util.Arrays.fill(stored.secret(), '\0');
+                }
+            }
+        }
     }
 
     public static GitRepositoryService open(Path directory) throws IOException {
@@ -43,13 +59,13 @@ public final class GitRepositoryService implements AutoCloseable {
     }
 
     public static GitRepositoryService cloneRepository(String uri, Path destination)
-            throws GitAPIException {
+            throws GitAPIException, IOException {
         return cloneRepository(uri, destination, "", new char[0]);
     }
 
     public static GitRepositoryService cloneRepository(String uri, Path destination,
                                                         String username, char[] password)
-            throws GitAPIException {
+            throws GitAPIException, IOException {
         if (uri == null || uri.isBlank()) {
             throw new IllegalArgumentException("Enter a repository URL.");
         }
@@ -67,7 +83,18 @@ public final class GitRepositoryService implements AutoCloseable {
             command.setCredentialsProvider(credentials);
         }
         try {
-            return new GitRepositoryService(command.call());
+            Git clonedGit = command.call();
+            GitRepositoryService service;
+            try {
+                service = new GitRepositoryService(clonedGit);
+                if (hasUsername) {
+                    service.setHttpsCredentials(username, password);
+                }
+            } catch (IOException | RuntimeException exception) {
+                clonedGit.close();
+                throw exception;
+            }
+            return service;
         } finally {
             if (credentials != null) {
                 credentials.clear();
@@ -79,13 +106,20 @@ public final class GitRepositoryService implements AutoCloseable {
         return git.getRepository();
     }
 
-    public void setHttpsCredentials(String username, char[] password) {
+    public boolean setHttpsCredentials(String username, char[] password) throws IOException {
         if (username == null || username.isBlank() || password == null || password.length == 0) {
             throw new IllegalArgumentException("Enter both a username and a password or access token.");
         }
+        String normalizedUsername = username.trim();
+        boolean persistCredentials = credentialStore.isSupported();
+        if (persistCredentials) {
+            credentialStore.save(credentialTarget, normalizedUsername, password);
+        }
         clearHttpsCredentials();
-        credentialsProvider = new UsernamePasswordCredentialsProvider(username.trim(),
+        credentialsProvider = new UsernamePasswordCredentialsProvider(normalizedUsername,
                 password.clone());
+        credentialsPersisted = persistCredentials;
+        return persistCredentials;
     }
 
     public void clearHttpsCredentials() {
@@ -93,6 +127,7 @@ public final class GitRepositoryService implements AutoCloseable {
             provider.clear();
         }
         credentialsProvider = null;
+        credentialsPersisted = false;
     }
 
     public void addRemote(String name, String uri) throws GitAPIException {

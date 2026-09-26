@@ -4,6 +4,7 @@ import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
@@ -74,6 +75,8 @@ final class RepositoryWorkspaceView {
     private List<GitRepositoryService.CommitEntry> allCommits = List.of();
     private boolean repositoryAvailable;
     private boolean operationAvailable = true;
+    private GitRepositoryService.CommitEntry pressedCommit;
+    private boolean pressedCommitWasSelected;
     private VBox unstagedPane;
     private VBox stagedPane;
     private VBox repositoryWorkspace;
@@ -126,9 +129,19 @@ final class RepositoryWorkspaceView {
                 setGraphic(new VBox(5, summary, details));
             }
         });
+        history.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+            pressedCommit = commitCellAt(event);
+            pressedCommitWasSelected = pressedCommit != null
+                    && pressedCommit.equals(history.getSelectionModel().getSelectedItem());
+        });
         history.setOnMouseClicked(event -> {
-            if (event.getClickCount() == 2 && history.getSelectionModel().getSelectedItem() != null)
+            GitRepositoryService.CommitEntry clickedCommit = commitCellAt(event);
+            if (pressedCommitWasSelected && pressedCommit != null
+                    && pressedCommit.equals(clickedCommit)) {
                 history.getSelectionModel().clearSelection();
+            }
+            pressedCommit = null;
+            pressedCommitWasSelected = false;
         });
         history.getSelectionModel().selectedItemProperty()
                 .addListener((o, old, commit) -> actions.historySelected(commit));
@@ -416,6 +429,19 @@ final class RepositoryWorkspaceView {
                         || commit.shortId().toLowerCase().contains(normalized))
                 .toList();
         history.setItems(FXCollections.observableArrayList(filtered));
+    }
+
+    private GitRepositoryService.CommitEntry commitCellAt(MouseEvent event) {
+        Node target = event.getPickResult().getIntersectedNode();
+        while (target != null && !(target instanceof ListCell<?>)) {
+            target = target.getParent();
+        }
+        if (target instanceof ListCell<?> cell
+                && cell.getListView() == history
+                && cell.getItem() instanceof GitRepositoryService.CommitEntry commit) {
+            return commit;
+        }
+        return null;
     }
 
     private void updateCommitEnabled() {

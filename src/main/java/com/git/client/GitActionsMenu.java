@@ -130,17 +130,20 @@ final class GitActionsMenu {
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(actions.owner());
         dialog.setTitle("HTTPS credentials");
-        dialog.setHeaderText("Credentials stay in memory and are not saved to Git config.");
+        dialog.setHeaderText("Credentials are stored in Windows Credential Manager, not Git config.");
         dialog.getDialogPane().setContent(fields);
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
         dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(button -> {
             char[] secret = password.getText().toCharArray();
             try {
-                actions.repository().setHttpsCredentials(username.getText(), secret);
-                actions.setStatus("HTTPS credentials configured successfully for this session.");
-                actions.logInfo("HTTPS credentials were configured for the current session.");
-            } catch (IllegalArgumentException exception) {
-                actions.showError("Invalid credentials", exception);
+                boolean persisted = actions.repository().setHttpsCredentials(username.getText(), secret);
+                String message = persisted
+                        ? "HTTPS credentials saved securely for this repository."
+                        : "HTTPS credentials configured for this session only.";
+                actions.setStatus(message);
+                actions.logInfo(message);
+            } catch (IllegalArgumentException | IOException exception) {
+                actions.showError("Could not configure credentials", exception);
             } finally {
                 Arrays.fill(secret, '\0');
                 password.clear();
