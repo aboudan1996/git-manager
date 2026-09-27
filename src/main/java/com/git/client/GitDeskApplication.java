@@ -20,7 +20,9 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Repository;
@@ -28,6 +30,7 @@ import org.eclipse.jgit.lib.Repository;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -42,6 +45,7 @@ public class GitDeskApplication extends Application {
     private final MenuButton actionsButton = new MenuButton("Git actions");
     private final ProgressIndicator operationSpinner = new ProgressIndicator();
     private final Deque<RepositoryRequest> pendingRepositoryOpens = new ArrayDeque<>();
+    private final List<Button> quickActionButtons = new ArrayList<>();
     private Stage stage;
     private GitRepositoryService repositoryService;
     private GitActionsMenu actionsMenu;
@@ -58,7 +62,7 @@ public class GitDeskApplication extends Application {
     @Override
     public void start(Stage stage) {
         this.stage = stage;
-        logService.info("GitDesk application started.");
+        logService.info("GitPilot application started.");
         logService.info("Application log file: " + logService.logFile().toAbsolutePath());
         activeWorkspace = new RepositoryWorkspaceView(stage, workspaceActions());
         actionsMenu = new GitActionsMenu(actionsButton, menuActions());
@@ -73,15 +77,20 @@ public class GitDeskApplication extends Application {
         root.getStyleClass().add("app-root");
         root.setTop(createToolbar());
         root.setCenter(workspace().create());
-        Scene scene = new Scene(root, 1180, 760);
+        var screenBounds = Screen.getPrimary().getVisualBounds();
+        double initialWidth = Math.min(1440, screenBounds.getWidth() * 0.95);
+        double initialHeight = screenBounds.getHeight() * 0.94;
+        Scene scene = new Scene(root, initialWidth, initialHeight);
         scene.getStylesheets().add(GitDeskApplication.class.getResource("styles.css").toExternalForm());
-        stage.setTitle("GitDesk");
+        stage.setTitle("GitPilot");
         stage.getIcons().add(new Image(
                 GitDeskApplication.class.getResourceAsStream("gitdesk_icon.png")));
-        stage.setMinWidth(900);
-        stage.setMinHeight(620);
+        stage.setMinWidth(Math.min(900, screenBounds.getWidth() * 0.8));
+        stage.setMinHeight(Math.min(620, screenBounds.getHeight() * 0.75));
         stage.setScene(scene);
         stage.show();
+        stage.setX(screenBounds.getMinX() + (screenBounds.getWidth() - stage.getWidth()) / 2);
+        stage.setY(screenBounds.getMinY() + (screenBounds.getHeight() - stage.getHeight()) / 2);
         updateControls();
         workspace().setRepositoryAvailable(repositoryService != null);
         refreshRecentRepositoryList();
@@ -164,9 +173,12 @@ public class GitDeskApplication extends Application {
     }
 
     private HBox createToolbar() {
-        Label appName = new Label("GITDESK");
+        Label appName = new Label("GITPILOT");
         appName.getStyleClass().add("app-name");
         repositoryLabel.getStyleClass().addAll("repository-label", "repository-switcher");
+        repositoryLabel.setPrefHeight(34);
+        repositoryLabel.setMinHeight(34);
+        repositoryLabel.setMaxHeight(34);
         branchLabel.getStyleClass().addAll("branch-badge", "muted-badge");
         branchLabel.setTooltip(new Tooltip(
                 "Click to search local and remote branches; right-click for branch actions"));
@@ -187,7 +199,10 @@ public class GitDeskApplication extends Application {
         openRepositoryButton.getStyleClass().add("secondary-button");
         openRepositoryButton.setOnAction(event -> chooseRepository());
         Button addRepositoryButton = new Button("+");
-        addRepositoryButton.getStyleClass().add("add-repository-button");
+        addRepositoryButton.getStyleClass().add("repository-switcher");
+        addRepositoryButton.setPrefHeight(34);
+        addRepositoryButton.setMinHeight(34);
+        addRepositoryButton.setMaxHeight(34);
         addRepositoryButton.setTooltip(new Tooltip("Open another repository"));
         addRepositoryButton.setOnAction(event -> chooseRepository());
         cloneRepositoryButton = new Button("Clone");
@@ -198,6 +213,25 @@ public class GitDeskApplication extends Application {
         refreshButton.setOnAction(event -> refreshRepository());
         MenuButton menu = actionsButton;
         menu.getStyleClass().add("secondary-button");
+        quickActionButtons.clear();
+        HBox quickActions = new HBox(3,
+                createQuickAction("↶", "Undo", "Save and clear uncommitted changes",
+                        () -> runRemoteAction("Undo", () -> repositoryService.undoWorkingChanges())),
+                createQuickAction("↷", "Redo", "Restore the last changes cleared by Undo",
+                        () -> runRemoteAction("Redo", () -> repositoryService.redoWorkingChanges())),
+                createQuickAction("↓", "Pull", "Pull changes from the upstream branch",
+                        () -> runRemoteAction("Pull", () -> repositoryService.pull())),
+                createQuickAction("↑", "Push", "Push the current branch",
+                        () -> runRemoteAction("Push", () -> repositoryService.push())),
+                createQuickAction("⎇", "Branch", "Search and switch branches",
+                        () -> actionsMenu.switchBranch()),
+                createQuickAction("▤", "Stash", "Stash working changes",
+                        () -> runRemoteAction("Stash", () -> repositoryService.stash())),
+                createQuickAction("⇩", "Pop", "Apply and remove the latest stash",
+                        () -> runRemoteAction("Pop stash",
+                                () -> repositoryService.applyLatestStash(true))));
+        quickActions.setAlignment(Pos.CENTER_LEFT);
+        quickActions.getStyleClass().add("quick-actions");
         operationSpinner.setPrefSize(19, 19);
         operationSpinner.setMaxSize(19, 19);
         operationSpinner.setProgress(ProgressIndicator.INDETERMINATE_PROGRESS);
@@ -208,12 +242,30 @@ public class GitDeskApplication extends Application {
         HBox.setHgrow(spacer, Priority.ALWAYS);
         HBox heading = new HBox(6, repositoryLabel, addRepositoryButton);
         heading.setAlignment(Pos.CENTER_LEFT);
-        HBox toolbar = new HBox(14, appName, heading, spacer, operationSpinner, branchLabel, menu,
+        HBox toolbar = new HBox(10, appName, heading, quickActions, spacer,
+                operationSpinner, branchLabel, menu,
                 cloneRepositoryButton, openRepositoryButton, refreshButton);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.setPadding(new Insets(16, 22, 16, 22));
         toolbar.getStyleClass().add("toolbar");
         return toolbar;
+    }
+
+    private Button createQuickAction(String icon, String title, String tooltip, Runnable action) {
+        Label iconLabel = new Label(icon);
+        iconLabel.getStyleClass().add("quick-action-icon");
+        Label titleLabel = new Label(title);
+        titleLabel.getStyleClass().add("quick-action-title");
+        VBox graphic = new VBox(1, iconLabel, titleLabel);
+        graphic.setAlignment(Pos.CENTER);
+        Button button = new Button();
+        button.setGraphic(graphic);
+        button.setTooltip(new Tooltip(tooltip));
+        button.setAccessibleText(title + ": " + tooltip);
+        button.getStyleClass().add("quick-action-button");
+        button.setOnAction(event -> action.run());
+        quickActionButtons.add(button);
+        return button;
     }
 
     private void restoreRepositories() {
@@ -592,6 +644,7 @@ public class GitDeskApplication extends Application {
         cloneRepositoryButton.setDisable(operationRunning);
         refreshButton.setDisable(!hasRepository || operationRunning);
         branchLabel.setDisable(!hasRepository || operationRunning);
+        quickActionButtons.forEach(button -> button.setDisable(!hasRepository || operationRunning));
         repositoryTabs.setDisabled(operationRunning);
         workspace().setCommitEnabled(hasRepository && !operationRunning);
     }
@@ -604,6 +657,7 @@ public class GitDeskApplication extends Application {
     private void showMessage(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.initOwner(stage);
+        DialogStyler.apply(alert);
         alert.setTitle(title);
         alert.setHeaderText(title);
         alert.setContentText(message);
@@ -613,6 +667,7 @@ public class GitDeskApplication extends Application {
     private void showError(String title, Throwable exception) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.initOwner(stage);
+        DialogStyler.apply(alert);
         alert.setTitle(title);
         alert.setHeaderText(title);
         alert.setContentText(errorMessage(exception));
@@ -629,7 +684,7 @@ public class GitDeskApplication extends Application {
     public void stop() {
         persistOpenRepositories();
         repositoryTabs.closeAll();
-        logService.info("GitDesk application stopped.");
+        logService.info("GitPilot application stopped.");
         logService.close();
     }
 

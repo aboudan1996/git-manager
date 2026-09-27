@@ -152,6 +152,55 @@ class GitRepositoryServiceTest {
     }
 
     @Test
+    void undoesAndRedoesStagedAndUntrackedWorkingChanges() throws Exception {
+        Path tracked = directory.resolve("undo.txt");
+        Files.writeString(tracked, "base");
+        try (Git git = Git.open(directory.toFile())) {
+            git.add().addFilepattern("undo.txt").call();
+            git.commit().setMessage("Base").call();
+        }
+
+        Path untracked = directory.resolve("new-undo.txt");
+        Files.writeString(tracked, "staged change");
+        Files.writeString(untracked, "untracked change");
+        try (GitRepositoryService service = GitRepositoryService.open(directory)) {
+            service.stage(List.of("undo.txt"));
+
+            assertTrue(service.undoWorkingChanges().contains("Use Redo"));
+            assertEquals("base", Files.readString(tracked));
+            assertFalse(Files.exists(untracked));
+            assertTrue(service.getState().staged().isEmpty());
+            assertTrue(service.getState().unstaged().isEmpty());
+
+            assertTrue(service.redoWorkingChanges().contains("restored"));
+            assertEquals("staged change", Files.readString(tracked));
+            assertTrue(Files.exists(untracked));
+            assertTrue(service.getState().staged().contains("undo.txt"));
+            assertTrue(service.getState().unstaged().contains("new-undo.txt"));
+        }
+    }
+
+    @Test
+    void deletesOnlyNonCurrentLocalBranch() throws Exception {
+        Path file = directory.resolve("branch-delete.txt");
+        Files.writeString(file, "base");
+        try (Git git = Git.open(directory.toFile())) {
+            git.add().addFilepattern("branch-delete.txt").call();
+            git.commit().setMessage("Base").call();
+        }
+
+        try (GitRepositoryService service = GitRepositoryService.open(directory)) {
+            service.createBranch("feature/delete");
+            service.checkout("master");
+            service.deleteLocalBranch("feature/delete");
+
+            assertFalse(service.getLocalBranches().contains("feature/delete"));
+            assertThrows(IllegalArgumentException.class,
+                    () -> service.deleteLocalBranch("master"));
+        }
+    }
+
+    @Test
     void stashesAndRestoresUntrackedFiles() throws Exception {
         Path file = directory.resolve("work.txt");
         Files.writeString(directory.resolve("base.txt"), "base");

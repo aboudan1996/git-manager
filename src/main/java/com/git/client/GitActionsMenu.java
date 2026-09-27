@@ -3,6 +3,7 @@ package com.git.client;
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ChoiceDialog;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -85,7 +86,7 @@ final class GitActionsMenu {
                     actions.setStatus(actions.repository().abortRebase())));
             menu.getItems().add(new javafx.scene.control.SeparatorMenuItem());
             addAction("Stash changes", () -> actions.repositoryAction("Stash changes",
-                    () -> actions.repository().stash()));
+                    () -> actions.setStatus(actions.repository().stash())));
             addAction("Apply latest stash", () -> actions.repositoryAction("Apply latest stash", () ->
                     actions.setStatus(actions.repository().applyLatestStash(false))));
             addAction("Pop latest stash", () -> actions.repositoryAction("Pop latest stash", () ->
@@ -134,6 +135,7 @@ final class GitActionsMenu {
         fields.addRow(1, new Label("Password/token:"), password);
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(actions.owner());
+        DialogStyler.apply(dialog);
         dialog.setTitle("HTTPS credentials");
         dialog.setHeaderText("Credentials are stored in Windows Credential Manager, not Git config.");
         dialog.getDialogPane().setContent(fields);
@@ -165,6 +167,7 @@ final class GitActionsMenu {
                     .map(commit -> commit.shortId() + " — " + commit.message()).forEach(startPoints::add);
             ChoiceDialog<String> startDialog = new ChoiceDialog<>("HEAD (current)", startPoints);
             startDialog.initOwner(actions.owner());
+            DialogStyler.apply(startDialog);
             startDialog.setTitle("Create branch");
             startDialog.setHeaderText("Choose where the new branch starts");
             startDialog.setContentText("Start from:");
@@ -174,6 +177,7 @@ final class GitActionsMenu {
                         : startPoint;
                 TextInputDialog nameDialog = new TextInputDialog();
                 nameDialog.initOwner(actions.owner());
+                DialogStyler.apply(nameDialog);
                 nameDialog.setTitle("Create branch");
                 nameDialog.setHeaderText("The new branch will start from " + startPoint);
                 nameDialog.setContentText("Branch name:");
@@ -198,6 +202,7 @@ final class GitActionsMenu {
             String currentBranch = actions.repository().getState().branch();
             TextInputDialog dialog = new TextInputDialog();
             dialog.initOwner(actions.owner());
+            DialogStyler.apply(dialog);
             dialog.setTitle("Create branch from current");
             dialog.setHeaderText("Create a branch from " + currentBranch);
             dialog.setContentText("New branch name:");
@@ -212,12 +217,14 @@ final class GitActionsMenu {
     private void addRemote() {
         TextInputDialog nameDialog = new TextInputDialog("origin");
         nameDialog.initOwner(actions.owner());
+        DialogStyler.apply(nameDialog);
         nameDialog.setTitle("Add remote");
         nameDialog.setHeaderText("Add a named Git remote");
         nameDialog.setContentText("Remote name:");
         nameDialog.showAndWait().ifPresent(name -> {
             TextInputDialog urlDialog = new TextInputDialog();
             urlDialog.initOwner(actions.owner());
+            DialogStyler.apply(urlDialog);
             urlDialog.setTitle("Add remote");
             urlDialog.setHeaderText("Enter the remote URL");
             urlDialog.setContentText("Remote URL:");
@@ -229,6 +236,7 @@ final class GitActionsMenu {
     void cloneRepository() {
         TextInputDialog urlDialog = new TextInputDialog();
         urlDialog.initOwner(actions.owner());
+        DialogStyler.apply(urlDialog);
         urlDialog.setTitle("Clone repository");
         urlDialog.setHeaderText("Clone a remote Git repository");
         urlDialog.setContentText("HTTPS URL:");
@@ -243,6 +251,7 @@ final class GitActionsMenu {
             credentials.addRow(1, new Label("Token (optional):"), token);
             Dialog<ButtonType> dialog = new Dialog<>();
             dialog.initOwner(actions.owner());
+            DialogStyler.apply(dialog);
             dialog.setTitle("Clone authentication");
             dialog.setHeaderText("Leave blank for public repositories.");
             dialog.getDialogPane().setContent(credentials);
@@ -301,16 +310,36 @@ final class GitActionsMenu {
 
             TextField search = new TextField();
             search.setPromptText("Search local and remote branches...");
+            search.getStyleClass().add("search-field");
             ListView<BranchOption> results = new ListView<>();
             results.getItems().setAll(branches);
             results.setPlaceholder(new Label("No branches match this search"));
             results.setCellFactory(list -> new ListCell<>() {
+                private final MenuItem deleteBranchItem = new MenuItem("Delete local branch...");
+                private final ContextMenu localBranchMenu = new ContextMenu(deleteBranchItem);
+
+                {
+                    deleteBranchItem.setOnAction(event -> {
+                        BranchOption selected = getItem();
+                        if (selected != null && !selected.remote()) {
+                            confirmDeleteBranch(selected.name());
+                        }
+                    });
+                    localBranchMenu.setOnShowing(event -> {
+                        if (!isEmpty() && getItem() != null) {
+                            results.getSelectionModel().select(getIndex());
+                        }
+                    });
+                }
+
                 @Override
                 protected void updateItem(BranchOption branch, boolean empty) {
                     super.updateItem(branch, empty);
                     setText(empty || branch == null ? null
                             : (branch.remote() ? "Remote  ·  " : "Local  ·  ")
                             + branch.name());
+                    setContextMenu(!empty && branch != null && !branch.remote()
+                            ? localBranchMenu : null);
                 }
             });
             search.textProperty().addListener((observable, previous, query) -> {
@@ -326,6 +355,7 @@ final class GitActionsMenu {
             });
             Dialog<ButtonType> dialog = new Dialog<>();
             dialog.initOwner(actions.owner());
+            DialogStyler.apply(dialog);
             dialog.setTitle("Switch branch");
             dialog.setHeaderText("Select or search local and remote branches");
             dialog.getDialogPane().setContent(new javafx.scene.layout.VBox(10, search, results));
@@ -364,6 +394,20 @@ final class GitActionsMenu {
         }
     }
 
+    private void confirmDeleteBranch(String branch) {
+        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION);
+        confirmation.initOwner(actions.owner());
+        DialogStyler.apply(confirmation);
+        confirmation.setTitle("Delete local branch");
+        confirmation.setHeaderText("Delete " + branch + "?");
+        confirmation.setContentText("Git will prevent deletion if the branch contains "
+                + "unmerged commits.");
+        confirmation.showAndWait().filter(ButtonType.OK::equals).ifPresent(ignored ->
+                actions.repositoryAction("Delete local branch", () -> {
+                    actions.repository().deleteLocalBranch(branch);
+                }));
+    }
+
     private record BranchOption(String name, boolean remote) {
     }
 
@@ -375,6 +419,7 @@ final class GitActionsMenu {
             if (branches.isEmpty()) { actions.showMessage(title, "There are no other local branches."); return; }
             ChoiceDialog<String> dialog = new ChoiceDialog<>(branches.get(0), branches);
             dialog.initOwner(actions.owner());
+            DialogStyler.apply(dialog);
             dialog.setTitle(title); dialog.setHeaderText(title);
             dialog.setContentText("Select a local branch:");
             dialog.showAndWait().ifPresent(branch -> actions.repositoryAction(title,
@@ -395,6 +440,7 @@ final class GitActionsMenu {
         if (selected == null) return;
         Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION);
         confirmation.initOwner(actions.owner());
+        DialogStyler.apply(confirmation);
         confirmation.setTitle("Revert commit");
         confirmation.setHeaderText("Create a new commit that reverses this change?");
         confirmation.setContentText(selected.shortId() + "  " + selected.message());

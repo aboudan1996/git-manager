@@ -20,7 +20,9 @@ import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -34,6 +36,7 @@ public final class GitRepositoryService implements AutoCloseable {
     private final String credentialTarget;
     private CredentialsProvider credentialsProvider;
     private boolean credentialsPersisted;
+    private final Deque<UndoSnapshot> redoSnapshots = new ArrayDeque<>();
 
     private GitRepositoryService(Git git) throws IOException {
         this.git = git;
@@ -289,6 +292,17 @@ public final class GitRepositoryService implements AutoCloseable {
         git.checkout().setName(branch).call();
     }
 
+    public void deleteLocalBranch(String branch) throws GitAPIException, IOException {
+        if (branch == null || branch.isBlank()) {
+            throw new IllegalArgumentException("Select a local branch to delete.");
+        }
+        String currentBranch = git.getRepository().getBranch();
+        if (currentBranch.equals(branch)) {
+            throw new IllegalArgumentException("The current branch cannot be deleted.");
+        }
+        git.branchDelete().setBranchNames(branch.trim()).setForce(false).call();
+    }
+
     public String checkoutRemoteBranch(String remoteBranch) throws GitAPIException {
         if (remoteBranch == null) {
             throw new IllegalArgumentException("Select a remote tracking branch.");
@@ -347,8 +361,52 @@ public final class GitRepositoryService implements AutoCloseable {
                 : "Revert created " + result.getShortMessage();
     }
 
-    public void stash() throws GitAPIException {
-        git.stashCreate().setIncludeUntracked(true).call();
+    public String stash() throws GitAPIException {
+        RevCommit stashed = git.stashCreate().setIncludeUntracked(true).call();
+        return stashed == null ? "There are no changes to stash." : "Changes stashed successfully.";
+    }
+
+    public String undoWorkingChanges() throws GitAPIException, IOException {
+        Status status = git.status().call();
+        if (status.isClean()) {
+            throw new IllegalArgumentException("There are no uncommitted changes to undo.");
+        }
+        if (!status.getConflicting().isEmpty()) {
+            throw new IllegalArgumentException("Resolve merge conflicts before undoing changes.");
+        }
+        RevCommit snapshot = git.stashCreate().setIncludeUntracked(true).call();
+        if (snapshot == null) {
+            throw new IllegalStateException("Git could not save the current changes for undo.");
+        }
+        redoSnapshots.addLast(new UndoSnapshot(snapshot.getName(),
+                git.getRepository().getBranch()));
+        return "Changes are saved and removed from the working tree. Use Redo to restore them.";
+    }
+
+    public String redoWorkingChanges() throws GitAPIException, IOException {
+        UndoSnapshot snapshot = redoSnapshots.peekLast();
+        if (snapshot == null) {
+            throw new IllegalArgumentException("There are no changes available to redo.");
+        }
+        if (!snapshot.branch().equals(git.getRepository().getBranch())) {
+            throw new IllegalStateException("Switch back to branch " + snapshot.branch()
+                    + " before redoing these changes.");
+        }
+        List<RevCommit> stashes = git.stashList().call().stream().toList();
+        int stashIndex = -1;
+        for (int index = 0; index < stashes.size(); index++) {
+            if (stashes.get(index).getName().equals(snapshot.commitId())) {
+                stashIndex = index;
+                break;
+            }
+        }
+        if (stashIndex < 0) {
+            throw new IllegalStateException("The saved undo snapshot is no longer available.");
+        }
+        git.stashApply().setStashRef(snapshot.commitId()).call();
+        git.stashDrop().setStashRef(stashIndex).call();
+        redoSnapshots.removeLast();
+        return "The saved uncommitted changes have been restored.";
     }
 
     public String applyLatestStash(boolean dropAfterApply) throws GitAPIException {
@@ -499,5 +557,8 @@ public final class GitRepositoryService implements AutoCloseable {
 
     public record CommitEntry(String message, String shortId, String author, Instant date,
                               String objectId) {
+    }
+
+    private record UndoSnapshot(String commitId, String branch) {
     }
 }

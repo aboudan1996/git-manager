@@ -1,6 +1,6 @@
 param(
     [string]$JdkHome = $env:JAVA_HOME,
-    [string]$AppVersion = "1.0.5",
+    [string]$AppVersion = "1.1.0",
     [string]$WiXHome
 )
 
@@ -79,8 +79,9 @@ try {
     }
 
     Copy-Item (Join-Path $projectRoot "target\my-git-client-1.0-SNAPSHOT.jar") `
-        (Join-Path $packageInput "gitdesk.jar") -Force
-    $iconPath = Join-Path $installerDirectory "GitDesk.ico"
+        (Join-Path $packageInput "gitpilot.jar") -Force
+    $iconPath = Join-Path $installerDirectory "GitPilot.ico"
+    $installerResources = Join-Path $projectRoot "installer-resources"
     & (Join-Path $env:JAVA_HOME "bin\java.exe") `
         (Join-Path $projectRoot "tools\CreateWindowsIcon.java") `
         (Join-Path $projectRoot "src\main\resources\com\git\client\gitdesk_icon.png") `
@@ -91,17 +92,20 @@ try {
     foreach ($installerType in @("exe", "msi")) {
         & $jpackage `
             --type $installerType `
-            --name GitDesk `
+            --name GitPilot `
             --app-version $AppVersion `
-            --vendor GitDesk `
+            --vendor GitPilot `
             --description "Desktop Git client" `
             --input $packageInput `
-            --main-jar gitdesk.jar `
+            --main-jar gitpilot.jar `
             --main-class com.git.client.Launcher `
             --icon $iconPath `
             --dest $installerDirectory `
+            --resource-dir $installerResources `
+            --win-upgrade-uuid "BDE280C1-590A-36B5-B5C6-B024658FFF53" `
             --win-menu `
             --win-shortcut `
+            --win-dir-chooser `
             --win-per-user-install
         if ($LASTEXITCODE -ne 0) {
             throw "jpackage failed creating the $installerType installer (exit code $LASTEXITCODE)."

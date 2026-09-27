@@ -115,6 +115,7 @@ final class RepositoryWorkspaceView {
             }
         });
         search.setPromptText("Search commits...");
+        search.getStyleClass().add("search-field");
         search.textProperty().addListener((o, old, query) -> filterHistory(query));
         history.setCellFactory(list -> new ListCell<>() {
             @Override protected void updateItem(GitRepositoryService.CommitEntry commit, boolean empty) {
@@ -410,6 +411,7 @@ final class RepositoryWorkspaceView {
         scroll.setFitToWidth(true);
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(owner);
+        DialogStyler.apply(dialog);
         dialog.setTitle("Resolve conflict");
         dialog.setHeaderText(path + " — edit the result, then mark it resolved");
         dialog.getDialogPane().setContent(scroll);

@@ -1,20 +1,22 @@
 .root {
     -fx-font-family: "Segoe UI", "Arial";
     -fx-font-size: 13px;
+    -fx-focus-color: #668df2;
+    -fx-faint-focus-color: rgba(102, 141, 242, 0.18);
 }
 
 .app-root {
-    -fx-background-color: #111318;
+    -fx-background-color: #101319;
 }
 
 .toolbar {
-    -fx-background-color: #191c23;
-    -fx-border-color: transparent transparent #2a2e38 transparent;
+    -fx-background-color: #171b24;
+    -fx-border-color: transparent transparent #292f3a transparent;
 }
 
 .app-name {
     -fx-text-fill: #f4f5f7;
-    -fx-font-size: 17px;
+    -fx-font-size: 16px;
     -fx-font-weight: bold;
 }
 
@@ -32,6 +34,12 @@
 
 .repository-switcher:hover {
     -fx-background-color: #292d36;
+}
+
+.repository-switcher.button {
+    -fx-padding: 5px 9px;
+    -fx-font-weight: normal;
+    -fx-background-insets: 0;
 }
 
 .repository-switcher .arrow {
@@ -80,8 +88,8 @@
 }
 
 .history-pane {
-    -fx-background-color: #171a20;
-    -fx-border-color: transparent #292d36 transparent transparent;
+    -fx-background-color: #151920;
+    -fx-border-color: transparent #292f3a transparent transparent;
 }
 
 .section-title {
@@ -106,8 +114,8 @@
 
 .list-view,
 .change-list {
-    -fx-background-color: #191c23;
-    -fx-control-inner-background: #191c23;
+    -fx-background-color: #171b23;
+    -fx-control-inner-background: #171b23;
     -fx-background-insets: 0;
     -fx-border-color: #2a2e38;
     -fx-border-radius: 6px;
@@ -122,7 +130,7 @@
 }
 
 .list-cell:filled:selected {
-    -fx-background-color: #283750;
+    -fx-background-color: #263654;
     -fx-text-fill: white;
 }
 
@@ -147,25 +155,25 @@
 
 .change-pane {
     -fx-padding: 14px;
-    -fx-background-color: #171a20;
+    -fx-background-color: #171b23;
     -fx-background-radius: 8px;
-    -fx-border-color: #292d36;
+    -fx-border-color: #2a303b;
     -fx-border-radius: 8px;
 }
 
 .commit-pane {
     -fx-padding: 16px;
-    -fx-background-color: #171a20;
+    -fx-background-color: #171b23;
     -fx-background-radius: 8px;
-    -fx-border-color: #292d36;
+    -fx-border-color: #2a303b;
     -fx-border-radius: 8px;
 }
 
 .diff-pane {
     -fx-padding: 14px;
-    -fx-background-color: #171a20;
+    -fx-background-color: #171b23;
     -fx-background-radius: 8px;
-    -fx-border-color: #292d36;
+    -fx-border-color: #2a303b;
     -fx-border-radius: 8px;
 }
 
@@ -241,12 +249,19 @@
 }
 
 .secondary-button {
-    -fx-background-color: #292d36;
+    -fx-background-color: #282e39;
     -fx-text-fill: #e1e4ea;
 }
 
 .secondary-button:hover {
-    -fx-background-color: #363b47;
+    -fx-background-color: #343c4a;
+}
+
+.secondary-button:focused,
+.text-field:focused,
+.text-area:focused,
+.list-view:focused {
+    -fx-border-color: #668df2;
 }
 
 .text-button {
@@ -270,4 +285,195 @@
 
 #commitButton:hover {
     -fx-background-color: #4a89ff;
+}
+
+.quick-actions {
+    -fx-spacing: 2px;
+}
+
+.quick-action-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 7px;
+    -fx-padding: 4px 5px;
+    -fx-min-width: 42px;
+    -fx-pref-width: 46px;
+    -fx-min-height: 42px;
+    -fx-font-weight: normal;
+}
+
+.quick-action-button:hover {
+    -fx-background-color: rgba(120, 150, 205, 0.15);
+}
+
+.quick-action-button:pressed {
+    -fx-background-color: rgba(120, 150, 205, 0.25);
+}
+
+.quick-action-icon {
+    -fx-text-fill: #c1ccdc;
+    -fx-font-family: "Segoe UI Symbol", "Segoe UI";
+    -fx-font-size: 15px;
+    -fx-font-weight: normal;
+}
+
+.quick-action-title {
+    -fx-text-fill: #aab4c4;
+    -fx-font-size: 9px;
+    -fx-font-weight: normal;
+}
+
+.quick-action-button:hover .quick-action-icon,
+.quick-action-button:hover .quick-action-title {
+    -fx-text-fill: #f2f5fa;
+}
+
+.quick-action-button:disabled {
+    -fx-opacity: 0.38;
+}
+
+.search-field,
+.gitdesk-dialog .search-field {
+    -fx-background-color: #121720;
+    -fx-control-inner-background: #121720;
+    -fx-text-fill: #e8edf5;
+    -fx-prompt-text-fill: #808a9a;
+    -fx-border-color: #303a49;
+    -fx-border-radius: 7px;
+    -fx-background-radius: 7px;
+    -fx-background-insets: 0;
+    -fx-padding: 9px 12px;
+}
+
+.search-field:focused,
+.gitdesk-dialog .search-field:focused {
+    -fx-border-color: #668df2;
+    -fx-background-color: #151b26;
+    -fx-control-inner-background: #151b26;
+}
+
+.scroll-bar:vertical,
+.scroll-bar:horizontal {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 2px;
+}
+
+.scroll-bar:vertical {
+    -fx-pref-width: 9px;
+}
+
+.scroll-bar:horizontal {
+    -fx-pref-height: 9px;
+}
+
+.scroll-bar .track,
+.scroll-bar .track-background {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8px;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: rgba(164, 178, 199, 0.25);
+    -fx-background-insets: 1px;
+    -fx-background-radius: 8px;
+}
+
+.scroll-bar:hover .thumb {
+    -fx-background-color: rgba(174, 191, 216, 0.48);
+}
+
+.scroll-bar .thumb:pressed {
+    -fx-background-color: rgba(116, 157, 245, 0.72);
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.scroll-bar .increment-arrow,
+.scroll-bar .decrement-arrow {
+    -fx-padding: 0;
+    -fx-shape: "";
+}
+
+.corner {
+    -fx-background-color: transparent;
+}
+
+.gitdesk-dialog {
+    -fx-background-color: #171b24;
+    -fx-border-color: #343c49;
+    -fx-border-radius: 10px;
+    -fx-background-radius: 10px;
+    -fx-padding: 0;
+}
+
+.gitdesk-dialog .header-panel {
+    -fx-background-color: #1c222d;
+    -fx-background-radius: 10px 10px 0 0;
+    -fx-padding: 20px 22px 15px;
+}
+
+.gitdesk-dialog .header-panel .label {
+    -fx-text-fill: #f0f3f8;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.gitdesk-dialog > .content {
+    -fx-background-color: #171b24;
+    -fx-padding: 18px 22px;
+}
+
+.gitdesk-dialog .label {
+    -fx-text-fill: #c1c8d4;
+}
+
+.gitdesk-dialog .text-field,
+.gitdesk-dialog .password-field,
+.gitdesk-dialog .text-area,
+.gitdesk-dialog .choice-box,
+.gitdesk-dialog .combo-box-base {
+    -fx-background-color: #10141b;
+    -fx-control-inner-background: #10141b;
+    -fx-text-fill: #edf1f7;
+    -fx-prompt-text-fill: #778294;
+    -fx-border-color: #343d4b;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-padding: 8px 10px;
+}
+
+.gitdesk-dialog .button-bar {
+    -fx-background-color: #151920;
+    -fx-background-radius: 0 0 10px 10px;
+    -fx-padding: 12px 20px 16px;
+}
+
+.gitdesk-dialog .button {
+    -fx-background-radius: 6px;
+    -fx-padding: 8px 18px;
+    -fx-font-size: 12px;
+}
+
+.gitdesk-dialog .button:default {
+    -fx-background-color: #4c78e8;
+    -fx-text-fill: white;
+}
+
+.gitdesk-dialog .button:default:hover {
+    -fx-background-color: #6089f3;
+}
+
+.gitdesk-dialog .button:cancel {
+    -fx-background-color: #2a303b;
+    -fx-text-fill: #e0e5ee;
+}
+
+.gitdesk-dialog .button:cancel:hover {
+    -fx-background-color: #394251;
 }

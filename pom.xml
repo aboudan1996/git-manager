@@ -139,9 +139,9 @@
                         <id>default-cli</id>
                         <configuration>
                             <mainClass>com.git.client/com.git.client.Launcher</mainClass>
-                            <launcher>gitdesk</launcher>
-                            <jlinkZipName>gitdesk</jlinkZipName>
-                            <jlinkImageName>gitdesk-runtime</jlinkImageName>
+                            <launcher>gitpilot</launcher>
+                            <jlinkZipName>gitpilot</jlinkZipName>
+                            <jlinkImageName>gitpilot-runtime</jlinkImageName>
                             <noManPages>true</noManPages>
                             <stripDebug>true</stripDebug>
                             <noHeaderFiles>true</noHeaderFiles>
