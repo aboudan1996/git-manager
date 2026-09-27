@@ -22,6 +22,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
+import javafx.stage.FileChooser;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -34,6 +35,7 @@ import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
+import java.util.Locale;
 
 /** JavaFX bootstrap and coordinator for the open repository tabs and Git operations. */
 public class GitDeskApplication extends Application {
@@ -135,6 +137,12 @@ public class GitDeskApplication extends Application {
             @Override public void commitFileSelected(GitRepositoryService.CommitEntry commit, String path) {
                 showCommitFileDiff(commit, path);
             }
+            @Override public void stashSelected(GitRepositoryService.StashEntry stash) {
+                showStashDiff(stash);
+            }
+            @Override public void stashFileSelected(GitRepositoryService.StashEntry stash, String path) {
+                showStashFileDiff(stash, path);
+            }
         };
     }
 
@@ -229,7 +237,9 @@ public class GitDeskApplication extends Application {
                         () -> runRemoteAction("Stash", () -> repositoryService.stash())),
                 createQuickAction("⇩", "Pop", "Apply and remove the latest stash",
                         () -> runRemoteAction("Pop stash",
-                                () -> repositoryService.applyLatestStash(true))));
+                                () -> repositoryService.applyLatestStash(true))),
+                createQuickAction("⇧", "Patch", "Export staged, unstaged and untracked changes",
+                        this::choosePatchDestination));
         quickActions.setAlignment(Pos.CENTER_LEFT);
         quickActions.getStyleClass().add("quick-actions");
         operationSpinner.setPrefSize(19, 19);
@@ -466,7 +476,7 @@ public class GitDeskApplication extends Application {
             String status = state.unstaged().size() + " unstaged  ·  " + state.staged().size()
                     + " staged  ·  " + conflicts.size() + " conflicts";
             workspace().updateRepository(state.unstaged(), state.staged(), conflicts,
-                    repositoryService.getHistory(), status);
+                    repositoryService.getHistory(), repositoryService.getStashes(), status);
             updateControls();
         } catch (IOException | GitAPIException exception) {
             logService.error("Could not refresh repository state.", exception);
@@ -632,6 +642,46 @@ public class GitDeskApplication extends Application {
                     + repositoryService.getCommitFileDiff(commit.objectId(), path));
         } catch (IOException exception) {
             workspace().renderDiff(exception.getMessage());
+        }
+    }
+
+    private void showStashDiff(GitRepositoryService.StashEntry stash) {
+        if (stash == null) { workspace().showWorkingChanges(); return; }
+        if (repositoryService == null) return;
+        try {
+            workspace().showStash(stash, repositoryService.getStashFiles(stash.objectId()),
+                    repositoryService.getStashDiff(stash.objectId()));
+        } catch (IOException exception) {
+            workspace().renderDiff(exception.getMessage());
+        }
+    }
+
+    private void showStashFileDiff(GitRepositoryService.StashEntry stash, String path) {
+        if (path == null || repositoryService == null) return;
+        try {
+            workspace().renderDiff(stash.reference() + " — " + path + "\n\n"
+                    + repositoryService.getStashFileDiff(stash.objectId(), path));
+        } catch (IOException exception) {
+            workspace().renderDiff(exception.getMessage());
+        }
+    }
+
+    private void choosePatchDestination() {
+        if (repositoryService == null) return;
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Export local changes as a patch");
+        chooser.setInitialFileName("gitpilot-changes.patch");
+        chooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("Git patch files (*.patch)", "*.patch"));
+        File selected = chooser.showSaveDialog(stage);
+        if (selected != null) {
+            Path destination = selected.toPath();
+            if (!destination.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".patch")) {
+                destination = destination.resolveSibling(destination.getFileName() + ".patch");
+            }
+            Path patchDestination = destination;
+            runRepositoryAction("Create patch",
+                    () -> repositoryService.writeWorkingTreePatch(patchDestination));
         }
     }
 

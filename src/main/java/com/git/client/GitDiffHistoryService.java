@@ -20,7 +20,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /** Handles repository diffs and bounded commit-history queries. */
 final class GitDiffHistoryService {
@@ -137,6 +139,63 @@ final class GitDiffHistoryService {
         }
     }
 
+    String getWorkingTreePatch() throws IOException {
+        ObjectId head = repository.resolve(Constants.HEAD);
+        try (var reader = repository.newObjectReader();
+             ByteArrayOutputStream output = new ByteArrayOutputStream();
+             DiffFormatter formatter = new DiffFormatter(output)) {
+            AbstractTreeIterator oldTree;
+            if (head == null) {
+                oldTree = new EmptyTreeIterator();
+            } else {
+                try (RevWalk walk = new RevWalk(repository)) {
+                    CanonicalTreeParser headTree = new CanonicalTreeParser();
+                    headTree.reset(reader, walk.parseCommit(head).getTree());
+                    oldTree = headTree;
+                }
+            }
+            formatter.setRepository(repository);
+            formatter.setDiffComparator(RawTextComparator.DEFAULT);
+            formatter.setDetectRenames(true);
+            for (DiffEntry entry : formatter.scan(oldTree, new FileTreeIterator(repository))) {
+                formatter.format(entry);
+            }
+            return output.toString(StandardCharsets.UTF_8);
+        }
+    }
+
+    List<String> getStashFiles(String stashId) throws IOException {
+        RevCommit stash = parseCommit(stashId);
+        Set<String> paths = new LinkedHashSet<>(filesBetween(stash,
+                stash.getParentCount() == 0 ? null : stash.getParent(0)));
+        if (stash.getParentCount() > 2) {
+            paths.addAll(filesBetween(stash.getParent(2), null));
+        }
+        return List.copyOf(paths);
+    }
+
+    String getStashDiff(String stashId) throws IOException {
+        RevCommit stash = parseCommit(stashId);
+        String tracked = diffBetween(stash,
+                stash.getParentCount() == 0 ? null : stash.getParent(0), null);
+        if (stash.getParentCount() <= 2) {
+            return tracked;
+        }
+        String untracked = diffBetween(stash.getParent(2), null, null);
+        return joinDiffs(tracked, untracked);
+    }
+
+    String getStashFileDiff(String stashId, String path) throws IOException {
+        RevCommit stash = parseCommit(stashId);
+        String tracked = diffBetween(stash,
+                stash.getParentCount() == 0 ? null : stash.getParent(0), path);
+        if (!tracked.isBlank() || stash.getParentCount() <= 2) {
+            return tracked.isBlank() ? "No differences for " + path + " in this stash." : tracked;
+        }
+        String untracked = diffBetween(stash.getParent(2), null, path);
+        return untracked.isBlank() ? "No differences for " + path + " in this stash." : untracked;
+    }
+
     List<GitRepositoryService.CommitEntry> getHistory() throws IOException {
         List<GitRepositoryService.CommitEntry> commits = new ArrayList<>();
         ObjectId head = repository.resolve(Constants.HEAD);
@@ -168,6 +227,64 @@ final class GitDiffHistoryService {
         CanonicalTreeParser parentTree = new CanonicalTreeParser();
         parentTree.reset(reader, walk.parseCommit(commit.getParent(0)).getTree());
         return parentTree;
+    }
+
+    private List<String> filesBetween(RevCommit newer, RevCommit older) throws IOException {
+        try (var reader = repository.newObjectReader();
+             RevWalk walk = new RevWalk(repository);
+             DiffFormatter formatter = new DiffFormatter(new ByteArrayOutputStream())) {
+            formatter.setRepository(repository);
+            formatter.setDetectRenames(true);
+            return formatter.scan(treeOf(reader, walk, older), treeOf(reader, walk, newer))
+                    .stream()
+                    .map(entry -> entry.getChangeType() == DiffEntry.ChangeType.DELETE
+                            ? entry.getOldPath() : entry.getNewPath())
+                    .toList();
+        }
+    }
+
+    private String diffBetween(RevCommit newer, RevCommit older, String path) throws IOException {
+        try (var reader = repository.newObjectReader();
+             RevWalk walk = new RevWalk(repository);
+             ByteArrayOutputStream output = new ByteArrayOutputStream();
+             DiffFormatter formatter = new DiffFormatter(output)) {
+            formatter.setRepository(repository);
+            formatter.setDiffComparator(RawTextComparator.DEFAULT);
+            formatter.setDetectRenames(true);
+            for (DiffEntry entry : formatter.scan(
+                    treeOf(reader, walk, older), treeOf(reader, walk, newer))) {
+                if (path == null || path.equals(entry.getOldPath()) || path.equals(entry.getNewPath())) {
+                    formatter.format(entry);
+                }
+            }
+            return output.toString(StandardCharsets.UTF_8);
+        }
+    }
+
+    private AbstractTreeIterator treeOf(ObjectReader reader, RevWalk walk, RevCommit commit)
+            throws IOException {
+        if (commit == null) {
+            return new EmptyTreeIterator();
+        }
+        CanonicalTreeParser tree = new CanonicalTreeParser();
+        tree.reset(reader, walk.parseCommit(commit).getTree());
+        return tree;
+    }
+
+    private RevCommit parseCommit(String commitId) throws IOException {
+        ObjectId id = repository.resolve(commitId);
+        if (id == null) {
+            throw new IllegalArgumentException("The selected stash could not be found.");
+        }
+        try (RevWalk walk = new RevWalk(repository)) {
+            return walk.parseCommit(id);
+        }
+    }
+
+    private String joinDiffs(String first, String second) {
+        if (first.isBlank()) return second;
+        if (second.isBlank()) return first;
+        return first + System.lineSeparator() + second;
     }
 
     private ObjectId resolveCommit(String commitId) {

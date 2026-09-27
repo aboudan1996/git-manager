@@ -18,6 +18,7 @@ import org.eclipse.jgit.transport.URIish;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayDeque;
@@ -256,6 +257,38 @@ public final class GitRepositoryService implements AutoCloseable {
 
     public List<CommitEntry> getHistory() throws IOException {
         return diffHistoryService.getHistory();
+    }
+
+    public List<StashEntry> getStashes() throws GitAPIException {
+        List<RevCommit> commits = git.stashList().call().stream().toList();
+        List<StashEntry> stashes = new java.util.ArrayList<>(commits.size());
+        for (int index = 0; index < commits.size(); index++) {
+            RevCommit stash = commits.get(index);
+            stashes.add(new StashEntry("stash@{" + index + "}", stash.getShortMessage(),
+                    stash.getName().substring(0, 7),
+                    Instant.ofEpochSecond(stash.getCommitTime()), stash.getName()));
+        }
+        return List.copyOf(stashes);
+    }
+
+    public List<String> getStashFiles(String stashId) throws IOException {
+        return diffHistoryService.getStashFiles(stashId);
+    }
+
+    public String getStashDiff(String stashId) throws IOException {
+        return diffHistoryService.getStashDiff(stashId);
+    }
+
+    public String getStashFileDiff(String stashId, String path) throws IOException {
+        return diffHistoryService.getStashFileDiff(stashId, path);
+    }
+
+    public void writeWorkingTreePatch(Path destination) throws IOException {
+        String patch = diffHistoryService.getWorkingTreePatch();
+        if (patch.isBlank()) {
+            throw new IllegalArgumentException("There are no local changes to export.");
+        }
+        Files.writeString(destination, patch, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     public List<String> getLocalBranches() throws GitAPIException {
@@ -557,6 +590,10 @@ public final class GitRepositoryService implements AutoCloseable {
 
     public record CommitEntry(String message, String shortId, String author, Instant date,
                               String objectId) {
+    }
+
+    public record StashEntry(String reference, String message, String shortId, Instant date,
+                             String objectId) {
     }
 
     private record UndoSnapshot(String commitId, String branch) {

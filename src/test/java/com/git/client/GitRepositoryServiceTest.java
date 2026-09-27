@@ -8,6 +8,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayInputStream;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -218,6 +220,89 @@ class GitRepositoryServiceTest {
 
             assertTrue(Files.exists(file));
             assertEquals("work in progress", Files.readString(file));
+        }
+    }
+
+    @Test
+    void listsAndShowsTrackedAndUntrackedFilesInStashes() throws Exception {
+        Path tracked = directory.resolve("work.txt");
+        Files.writeString(tracked, "base\n");
+        try (Git git = Git.open(directory.toFile())) {
+            git.add().addFilepattern("work.txt").call();
+            git.commit().setMessage("Base").call();
+        }
+
+        Files.writeString(tracked, "base\nstaged change\n");
+        Path untracked = directory.resolve("new-work.txt");
+        Files.writeString(untracked, "untracked change\n");
+        try (GitRepositoryService service = GitRepositoryService.open(directory)) {
+            service.stage(List.of("work.txt"));
+            Files.writeString(tracked, "base\nstaged change\nunstaged change\n");
+            service.stash();
+
+            GitRepositoryService.StashEntry stash = service.getStashes().get(0);
+            assertEquals("stash@{0}", stash.reference());
+            assertTrue(service.getStashFiles(stash.objectId())
+                    .containsAll(List.of("work.txt", "new-work.txt")));
+            String diff = service.getStashDiff(stash.objectId());
+            assertTrue(diff.contains("staged change"));
+            assertTrue(diff.contains("unstaged change"));
+            assertTrue(diff.contains("untracked change"));
+            assertTrue(service.getStashFileDiff(stash.objectId(), "new-work.txt")
+                    .contains("untracked change"));
+        }
+    }
+
+    @Test
+    void exportsStagedUnstagedAndUntrackedChangesAsAnApplicablePatch() throws Exception {
+        Path tracked = directory.resolve("tracked.txt");
+        Files.writeString(tracked, "base\n");
+        try (Git git = Git.open(directory.toFile())) {
+            git.add().addFilepattern("tracked.txt").call();
+            git.commit().setMessage("Base").call();
+        }
+        Files.writeString(tracked, "base\nstaged change\n");
+        Path stagedFile = directory.resolve("staged.txt");
+        Files.writeString(stagedFile, "staged file\n");
+        Path untracked = directory.resolve("untracked.txt");
+        Files.writeString(untracked, "untracked file\n");
+
+        try (GitRepositoryService service = GitRepositoryService.open(directory)) {
+            service.stage(List.of("tracked.txt", "staged.txt"));
+            Files.writeString(tracked, "base\nstaged change\nunstaged change\n");
+            GitRepositoryService.RepositoryState before = service.getState();
+            Path patchFile = cloneDirectory.resolve("changes.patch");
+            service.writeWorkingTreePatch(patchFile);
+            String patch = Files.readString(patchFile, StandardCharsets.UTF_8);
+
+            assertTrue(patch.contains("staged change"));
+            assertTrue(patch.contains("unstaged change"));
+            assertTrue(patch.contains("staged.txt"));
+            assertTrue(patch.contains("untracked.txt"));
+            assertTrue(patch.contains("untracked file"));
+
+            assertEquals(before, service.getState());
+            assertEquals("base\nstaged change\nunstaged change\n", Files.readString(tracked));
+        }
+
+        try (Git target = Git.init().setDirectory(cloneDirectory.toFile()).call()) {
+            target.getRepository().getConfig().setString("user", null, "name", "Target User");
+            target.getRepository().getConfig().setString("user", null, "email", "target@example.com");
+            target.getRepository().getConfig().save();
+            Files.writeString(cloneDirectory.resolve("tracked.txt"), "base\n");
+            target.add().addFilepattern("tracked.txt").call();
+            target.commit().setMessage("Base").call();
+            String patch = Files.readString(cloneDirectory.resolve("changes.patch"),
+                    StandardCharsets.UTF_8);
+            target.apply().setPatch(new ByteArrayInputStream(
+                    patch.getBytes(StandardCharsets.UTF_8))).call();
+
+            assertEquals("base\nstaged change\nunstaged change\n", Files.readString(
+                    cloneDirectory.resolve("tracked.txt")).replace("\r\n", "\n"));
+            assertEquals("staged file\n", Files.readString(
+                    cloneDirectory.resolve("staged.txt")).replace("\r\n", "\n"));
+            assertEquals("untracked file\n", Files.readString(
+                    cloneDirectory.resolve("untracked.txt")).replace("\r\n", "\n"));
         }
     }
 

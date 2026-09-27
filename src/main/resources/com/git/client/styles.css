@@ -92,6 +92,37 @@
     -fx-border-color: transparent #292f3a transparent transparent;
 }
 
+.activity-tabs {
+    -fx-background-color: transparent;
+    -fx-tab-min-width: 94px;
+}
+
+.activity-tabs > .tab-header-area > .tab-header-background {
+    -fx-background-color: transparent;
+}
+
+.activity-tabs .tab {
+    -fx-background-color: #1b202a;
+    -fx-background-radius: 6px 6px 0 0;
+    -fx-padding: 5px 12px;
+}
+
+.activity-tabs .tab:selected {
+    -fx-background-color: #263654;
+}
+
+.activity-tabs .tab .tab-label {
+    -fx-text-fill: #aeb9ca;
+}
+
+.activity-tabs .tab:selected .tab-label {
+    -fx-text-fill: #f2f5fa;
+}
+
+.activity-tabs > .tab-content-area {
+    -fx-background-color: transparent;
+}
+
 .section-title {
     -fx-text-fill: #eef0f4;
     -fx-font-size: 16px;
