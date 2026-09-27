@@ -5,7 +5,7 @@ module com.git.client {
     requires java.prefs;
     requires java.logging;
     requires java.net.http;
-    // here we go 1
+    // here we go 2
     exports com.git.client;
 
 }
