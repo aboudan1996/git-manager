@@ -196,8 +196,8 @@ final class GitDiffHistoryService {
         return untracked.isBlank() ? "No differences for " + path + " in this stash." : untracked;
     }
 
-    List<GitRepositoryService.CommitEntry> getHistory() throws IOException {
-        List<GitRepositoryService.CommitEntry> commits = new ArrayList<>();
+    List<RepositoryOperations.CommitEntry> getHistory() throws IOException {
+        List<RepositoryOperations.CommitEntry> commits = new ArrayList<>();
         ObjectId head = repository.resolve(Constants.HEAD);
         if (head == null) {
             return List.of();
@@ -205,7 +205,7 @@ final class GitDiffHistoryService {
         try (RevWalk walk = new RevWalk(repository)) {
             walk.markStart(walk.parseCommit(head));
             for (RevCommit commit : walk) {
-                commits.add(new GitRepositoryService.CommitEntry(
+                commits.add(new RepositoryOperations.CommitEntry(
                         commit.getShortMessage(),
                         commit.getName().substring(0, 7),
                         commit.getAuthorIdent().getName(),

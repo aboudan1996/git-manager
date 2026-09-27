@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /** Watches repository files and coalesces bursts of filesystem events. */
-final class WorktreeWatcher implements AutoCloseable {
+final class WorktreeWatcher implements RepositoryChangeMonitor {
     private final Path workTree;
     private final Path gitDirectory;
     private final Runnable onChange;

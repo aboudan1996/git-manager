@@ -34,7 +34,6 @@ import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.util.StringConverter;
 import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.lib.Repository;
 
 import java.io.File;
 import java.io.IOException;
@@ -44,13 +43,17 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 /** JavaFX bootstrap and coordinator for the open repository tabs and Git operations. */
 public class GitDeskApplication extends Application {
-    private final LogService logService = new LogService();
-    private final RecentRepositoryStore recentStore = new RecentRepositoryStore();
-    private final RepositoryTabManager repositoryTabs = new RepositoryTabManager();
-    private final GitAccountService accountService = new GitAccountService();
+    private final ApplicationLogger logService;
+    private final RecentRepositoryStore recentStore;
+    private final RepositoryTabManager repositoryTabs;
+    private final GitAccountService accountService;
+    // These factories are the composition seams for alternate repository and watcher adapters.
+    private final RepositoryServiceFactory repositoryServiceFactory;
+    private final RepositoryChangeMonitorFactory changeMonitorFactory;
     private final MenuButton repositoryLabel = new MenuButton("No repository open");
     private final Label branchLabel = new Label("No branch");
     private final MenuButton actionsButton = new MenuButton("Git actions");
@@ -59,7 +62,7 @@ public class GitDeskApplication extends Application {
     private final Deque<RepositoryRequest> pendingRepositoryOpens = new ArrayDeque<>();
     private final List<Button> quickActionButtons = new ArrayList<>();
     private Stage stage;
-    private GitRepositoryService repositoryService;
+    private RepositoryOperations repositoryService;
     private GitActionsMenu actionsMenu;
     private javafx.scene.control.Button openRepositoryButton;
     private javafx.scene.control.Button cloneRepositoryButton;
@@ -81,17 +84,35 @@ public class GitDeskApplication extends Application {
     private Label loginStatus;
     private ProgressIndicator loginSpinner;
     private boolean repositoriesRestored;
-    private WorktreeWatcher worktreeWatcher;
+    private RepositoryChangeMonitor worktreeWatcher;
+
+    /** Default constructor required by the JavaFX application launcher. */
+    public GitDeskApplication() {
+        this(new LogService(), new JGitRepositoryServiceFactory(),
+                new NioRepositoryChangeMonitorFactory());
+    }
+
+    /** Constructor injection keeps infrastructure implementations replaceable in tests/deployments. */
+    GitDeskApplication(ApplicationLogger logService, RepositoryServiceFactory repositoryServiceFactory,
+                       RepositoryChangeMonitorFactory changeMonitorFactory) {
+        this.logService = Objects.requireNonNull(logService);
+        this.repositoryServiceFactory = Objects.requireNonNull(repositoryServiceFactory);
+        this.changeMonitorFactory = Objects.requireNonNull(changeMonitorFactory);
+        this.recentStore = new RecentRepositoryStore();
+        this.repositoryTabs = new RepositoryTabManager();
+        this.accountService = new GitAccountService();
+    }
 
     @Override
     public void start(Stage stage) {
         this.stage = stage;
-        logService.info("GitPilot application started.");
+        logService.event(ApplicationEvent.APPLICATION_STARTED, "GitPilot");
         logService.info("Application log file: " + logService.logFile().toAbsolutePath());
         activeWorkspace = new RepositoryWorkspaceView(stage, workspaceActions());
         actionsMenu = new GitActionsMenu(actionsButton, menuActions());
         repositoryTabs.onSelection(this::activateRepositoryTab);
-        repositoryTabs.onClosed(() -> {
+        repositoryTabs.onClosed(path -> {
+            logService.event(ApplicationEvent.REPOSITORY_CLOSED, path);
             persistOpenRepositories();
             refreshOpenRepositoryMenu();
             if (repositoryTabs.tabs().isEmpty()) recentStore.clearLastRepository();
@@ -204,6 +225,7 @@ public class GitDeskApplication extends Application {
     }
 
     private void restoreAuthentication() {
+        logService.event(ApplicationEvent.AUTHENTICATION_RESTORE_STARTED, "Saved account");
         showLogin("Checking for a saved GitHub or GitLab session...");
         loginSpinner.setVisible(true);
         loginSpinner.setManaged(true);
@@ -224,13 +246,19 @@ public class GitDeskApplication extends Application {
         };
         task.setOnSucceeded(event -> {
             if (task.getValue() == null) {
+                logService.event(ApplicationEvent.AUTHENTICATION_REQUIRED, "No valid saved account");
                 showLogin("Sign in with GitHub or GitLab to continue.");
             } else {
+                logService.event(ApplicationEvent.AUTHENTICATION_SUCCEEDED,
+                        task.getValue().provider().displayName());
                 activateAuthenticatedAccount(task.getValue());
             }
         });
-        task.setOnFailed(event ->
-                showLogin("Could not verify the saved session: " + errorMessage(task.getException())));
+        task.setOnFailed(event -> {
+            logService.event(ApplicationEvent.AUTHENTICATION_FAILED,
+                    task.getException().getClass().getSimpleName());
+            showLogin("Could not verify the saved session: " + errorMessage(task.getException()));
+        });
         Thread worker = new Thread(task, "git-account-restore");
         worker.setDaemon(true);
         worker.start();
@@ -239,6 +267,7 @@ public class GitDeskApplication extends Application {
     private void submitLogin() {
         if (loginButton.isDisabled() || loginProvider.getValue() == null) return;
         GitAccountService.Provider provider = loginProvider.getValue();
+        logService.event(ApplicationEvent.SIGN_IN_STARTED, provider.displayName());
         char[] token = loginToken.getText().toCharArray();
         loginToken.clear();
         loginButton.setDisable(true);
@@ -255,8 +284,13 @@ public class GitDeskApplication extends Application {
                 }
             }
         };
-        task.setOnSucceeded(event -> activateAuthenticatedAccount(task.getValue()));
+        task.setOnSucceeded(event -> {
+            logService.event(ApplicationEvent.AUTHENTICATION_SUCCEEDED, provider.displayName());
+            activateAuthenticatedAccount(task.getValue());
+        });
         task.setOnFailed(event -> {
+            logService.event(ApplicationEvent.AUTHENTICATION_FAILED,
+                    task.getException().getClass().getSimpleName());
             loginSpinner.setVisible(false);
             loginSpinner.setManaged(false);
             loginStatus.getStyleClass().setAll("login-status", "login-status-error");
@@ -299,6 +333,7 @@ public class GitDeskApplication extends Application {
     }
 
     private void showLogin(String message) {
+        logService.event(ApplicationEvent.LOGIN_VIEW_SHOWN, "Authentication required");
         root.setTop(null);
         root.setCenter(loginView);
         loginSpinner.setVisible(false);
@@ -310,6 +345,7 @@ public class GitDeskApplication extends Application {
 
     private void signOut() {
         if (operationRunning || authenticatedAccount == null) return;
+        logService.event(ApplicationEvent.SIGN_OUT_STARTED, authenticatedAccount.username());
         operationRunning = true;
         updateControls();
         Task<Void> task = new Task<>() {
@@ -320,7 +356,8 @@ public class GitDeskApplication extends Application {
         };
         task.setOnSucceeded(event -> {
             operationRunning = false;
-            repositoryTabs.repositories().forEach(GitRepositoryService::clearAuthenticatedAccount);
+            logService.event(ApplicationEvent.SIGN_OUT_SUCCEEDED, authenticatedAccount.username());
+            repositoryTabs.repositories().forEach(RepositoryOperations::clearAuthenticatedAccount);
             authenticatedAccount.close();
             authenticatedAccount = null;
             accountButton.setVisible(false);
@@ -330,6 +367,8 @@ public class GitDeskApplication extends Application {
         });
         task.setOnFailed(event -> {
             operationRunning = false;
+            logService.event(ApplicationEvent.SIGN_OUT_FAILED,
+                    task.getException().getClass().getSimpleName());
             updateControls();
             showError("Could not sign out", task.getException());
         });
@@ -363,23 +402,32 @@ public class GitDeskApplication extends Application {
                 showDiff(path, staged);
             }
             @Override public void showConflictDiff(String path) { updateConflictDiff(path); }
+            @Override public void userEvent(ApplicationEvent event, String detail) {
+                logService.event(event, detail);
+            }
             @Override public void resolveConflict(String path, String contents) {
                 runRepositoryAction("Resolve conflict", () -> repositoryService.resolveConflict(path, contents));
             }
             @Override public void loadConflict(String path) { openConflictEditor(path); }
-            @Override public void historySelected(GitRepositoryService.CommitEntry commit) {
+            @Override public void historySelected(RepositoryOperations.CommitEntry commit) {
+                logService.event(commit == null ? ApplicationEvent.COMMIT_SELECTION_CLEARED
+                        : ApplicationEvent.COMMIT_SELECTED,
+                        commit == null ? "" : commit.shortId());
                 showCommitDiff(commit);
             }
-            @Override public void commitFileSelected(GitRepositoryService.CommitEntry commit, String path) {
+            @Override public void commitFileSelected(RepositoryOperations.CommitEntry commit, String path) {
                 showCommitFileDiff(commit, path);
             }
-            @Override public void stashSelected(GitRepositoryService.StashEntry stash) {
+            @Override public void stashSelected(RepositoryOperations.StashEntry stash) {
+                logService.event(stash == null ? ApplicationEvent.STASH_SELECTION_CLEARED
+                        : ApplicationEvent.STASH_SELECTED,
+                        stash == null ? "" : stash.reference());
                 showStashDiff(stash);
             }
-            @Override public void stashFileSelected(GitRepositoryService.StashEntry stash, String path) {
+            @Override public void stashFileSelected(RepositoryOperations.StashEntry stash, String path) {
                 showStashFileDiff(stash, path);
             }
-            @Override public void applyStash(GitRepositoryService.StashEntry stash,
+            @Override public void applyStash(RepositoryOperations.StashEntry stash,
                                              boolean dropAfterApply) {
                 if (stash == null) return;
                 String operation = dropAfterApply ? "Pop selected stash" : "Apply selected stash";
@@ -392,9 +440,9 @@ public class GitDeskApplication extends Application {
     private GitActionsMenu.Actions menuActions() {
         return new GitActionsMenu.Actions() {
             @Override public Stage owner() { return stage; }
-            @Override public GitRepositoryService repository() { return repositoryService; }
-            @Override public GitRepositoryService.CommitEntry selectedCommit(String action) {
-                GitRepositoryService.CommitEntry selected = workspace().selectedCommit();
+            @Override public RepositoryOperations repository() { return repositoryService; }
+            @Override public RepositoryOperations.CommitEntry selectedCommit(String action) {
+                RepositoryOperations.CommitEntry selected = workspace().selectedCommit();
                 if (selected == null) showMessage(action, "Select a commit in the history first.");
                 return selected;
             }
@@ -410,6 +458,9 @@ public class GitDeskApplication extends Application {
             }
             @Override public void setStatus(String text) { setStatusText(text); }
             @Override public void logInfo(String message) { logService.info(message); }
+            @Override public void logEvent(ApplicationEvent event, String detail) {
+                logService.event(event, detail);
+            }
             @Override public void showError(String title, Throwable error) {
                 GitDeskApplication.this.showError(title, error);
             }
@@ -427,6 +478,8 @@ public class GitDeskApplication extends Application {
         Label appName = new Label("GITPILOT");
         appName.getStyleClass().add("app-name");
         repositoryLabel.getStyleClass().addAll("repository-label", "repository-switcher");
+        repositoryLabel.setOnShowing(event ->
+                logService.event(ApplicationEvent.REPOSITORY_MENU_OPENED, "Open repositories"));
         repositoryLabel.setPrefHeight(34);
         repositoryLabel.setMinHeight(34);
         repositoryLabel.setMaxHeight(34);
@@ -445,6 +498,8 @@ public class GitDeskApplication extends Application {
         searchBranches.setOnAction(event -> actionsMenu.switchBranch());
         branchContextMenu = new ContextMenu(createBranchFromCurrent,
                 new SeparatorMenuItem(), searchBranches);
+        branchContextMenu.setOnShowing(event ->
+                logService.event(ApplicationEvent.BRANCH_MENU_OPENED, "Branch actions"));
         branchLabel.setContextMenu(branchContextMenu);
         openRepositoryButton = new Button("Open repository");
         openRepositoryButton.getStyleClass().add("secondary-button");
@@ -471,6 +526,8 @@ public class GitDeskApplication extends Application {
         MenuButton menu = actionsButton;
         menu.getStyleClass().add("secondary-button");
         accountButton.getStyleClass().add("secondary-button");
+        accountButton.setOnShowing(event ->
+                logService.event(ApplicationEvent.ACCOUNT_MENU_OPENED, "Account"));
         accountButton.setTooltip(new Tooltip("Authenticated Git provider account"));
         accountButton.setVisible(false);
         accountButton.setManaged(false);
@@ -550,6 +607,7 @@ public class GitDeskApplication extends Application {
 
     private void activateRepositoryTab(Tab tab) {
         if (tab == null) {
+            logService.event(ApplicationEvent.REPOSITORY_SELECTED, "none");
             stopWorktreeWatcher();
             repositoryService = null;
             repositoryLabel.setText("No repository open");
@@ -563,6 +621,7 @@ public class GitDeskApplication extends Application {
             String path = repositoryTabs.path(tab);
             repositoryService = repositoryTabs.repository(path);
             if (repositoryService != null) {
+                logService.event(ApplicationEvent.REPOSITORY_SELECTED, path);
                 watchWorktree(repositoryService);
                 workspace().resetForRepository();
                 recentStore.setLastRepository(path);
@@ -576,21 +635,27 @@ public class GitDeskApplication extends Application {
         updateControls();
     }
 
-    private void watchWorktree(GitRepositoryService service) {
+    private void watchWorktree(RepositoryOperations service) {
         stopWorktreeWatcher();
-        Repository repository = service.getRepository();
         try {
-            worktreeWatcher = new WorktreeWatcher(
-                    repository.getWorkTree().toPath(),
-                    repository.getDirectory().toPath(),
+            worktreeWatcher = changeMonitorFactory.watch(
+                    service.workTreePath(),
+                    service.gitDirectoryPath(),
+                    // Filesystem callbacks originate off-thread; only JavaFX may update the scene.
                     () -> Platform.runLater(() -> {
+                        logService.event(ApplicationEvent.WORKTREE_CHANGE_DETECTED,
+                                service.workTreePath().toString());
                         if (repositoryService == service && !operationRunning) {
                             refreshRepository();
                         }
                     }),
-                    exception -> logService.error("Could not watch repository changes.", exception));
+                    exception -> logService.event(ApplicationEvent.WORKTREE_WATCH_FAILED,
+                            errorMessage(exception)));
+            logService.event(ApplicationEvent.WORKTREE_WATCH_STARTED,
+                    service.workTreePath().toString());
         } catch (IOException exception) {
-            logService.error("Could not start repository change detection.", exception);
+            logService.event(ApplicationEvent.WORKTREE_WATCH_FAILED,
+                    exception.getClass().getSimpleName());
             setStatusText("Automatic change detection is unavailable: " + errorMessage(exception));
         }
     }
@@ -599,9 +664,10 @@ public class GitDeskApplication extends Application {
         if (worktreeWatcher == null) return;
         worktreeWatcher.close();
         worktreeWatcher = null;
+        logService.event(ApplicationEvent.WORKTREE_WATCH_STOPPED, "Active repository");
     }
 
-    private void createRepositoryTab(Path directory, GitRepositoryService service) {
+    private void createRepositoryTab(Path directory, RepositoryOperations service) {
         String path = RepositoryTabManager.normalize(directory);
         if (repositoryTabs.contains(path)) {
             service.close();
@@ -609,7 +675,7 @@ public class GitDeskApplication extends Application {
             return;
         }
         repositoryTabs.add(directory, service);
-        logService.info("Opened repository: " + path);
+        logService.event(ApplicationEvent.REPOSITORY_OPENED, path);
         recentStore.remember(directory);
         refreshRecentRepositoryList();
         configureActionsMenu();
@@ -662,9 +728,12 @@ public class GitDeskApplication extends Application {
     }
 
     private void chooseRepository() {
+        logService.event(ApplicationEvent.REPOSITORY_CHOOSER_OPENED, "Open repository");
         DirectoryChooser chooser = new DirectoryChooser();
         chooser.setTitle("Open Git repository");
         File directory = chooser.showDialog(stage);
+        logService.event(ApplicationEvent.REPOSITORY_CHOOSER_CLOSED,
+                directory == null ? "cancelled" : "selection made");
         if (directory != null) openRepository(directory.toPath());
     }
 
@@ -672,6 +741,7 @@ public class GitDeskApplication extends Application {
 
     private void openRepository(Path directory, boolean remember) {
         String path = RepositoryTabManager.normalize(directory);
+        logService.event(ApplicationEvent.REPOSITORY_OPEN_REQUESTED, path);
         if (repositoryTabs.contains(path)) {
             selectRepositoryTab(path);
             if (remember) {
@@ -711,10 +781,10 @@ public class GitDeskApplication extends Application {
         setStatusText("Opening repository...");
         logService.info("Opening repository: " + path);
         updateControls();
-        Task<GitRepositoryService> task = new Task<>() {
+        Task<RepositoryOperations> task = new Task<>() {
             @Override
-            protected GitRepositoryService call() throws Exception {
-                GitRepositoryService service = GitRepositoryService.open(request.directory());
+            protected RepositoryOperations call() throws Exception {
+                RepositoryOperations service = repositoryServiceFactory.open(request.directory());
                 if (authenticatedAccount != null) {
                     service.setAuthenticatedAccount(authenticatedAccount);
                 }
@@ -731,14 +801,14 @@ public class GitDeskApplication extends Application {
             }
             operationRunning = false;
             setStatusText("Repository opened successfully.");
-            logService.info("Opened repository successfully: " + path);
             updateControls();
             openNextRepository();
         });
         task.setOnFailed(event -> {
             operationRunning = false;
             Throwable failure = task.getException();
-            logService.error("Could not open repository at " + path, failure);
+            logService.event(ApplicationEvent.REPOSITORY_OPEN_FAILED,
+                    path + ": " + failure.getClass().getSimpleName());
             setStatusText("Could not open repository: " + errorMessage(failure));
             updateControls();
             showError("Could not open repository", failure);
@@ -752,10 +822,10 @@ public class GitDeskApplication extends Application {
     private void refreshRepository() {
         if (repositoryService == null) { updateControls(); return; }
         try {
-            GitRepositoryService.RepositoryState state = repositoryService.getState();
-            Repository repository = repositoryService.getRepository();
-            repositoryLabel.setText(repository.getWorkTree().getName());
-            repositoryLabel.setTooltip(new Tooltip(repository.getWorkTree().getAbsolutePath()));
+            // The UI consumes one snapshot so its staged, unstaged, branch, and history views agree.
+            RepositoryOperations.RepositoryState state = repositoryService.getState();
+            repositoryLabel.setText(repositoryService.repositoryName());
+            repositoryLabel.setTooltip(new Tooltip(repositoryService.workTreePath().toString()));
             branchLabel.setText(state.branch());
             branchLabel.getStyleClass().remove("muted-badge");
             branchLabel.setDisable(false);
@@ -764,9 +834,12 @@ public class GitDeskApplication extends Application {
                     + " staged  ·  " + conflicts.size() + " conflicts";
             workspace().updateRepository(state.unstaged(), state.staged(), conflicts,
                     repositoryService.getHistory(), repositoryService.getStashes(), status);
+            logService.event(ApplicationEvent.REPOSITORY_REFRESHED,
+                    repositoryService.workTreePath().toString());
             updateControls();
         } catch (IOException | GitAPIException exception) {
-            logService.error("Could not refresh repository state.", exception);
+            logService.event(ApplicationEvent.REPOSITORY_REFRESH_FAILED,
+                    exception.getClass().getSimpleName());
             showError("Could not refresh repository", exception);
         }
     }
@@ -870,14 +943,16 @@ public class GitDeskApplication extends Application {
 
     private void cloneRepository(String url, String username, char[] secret, Path destination) {
         operationRunning = true;
+        logService.event(ApplicationEvent.CLONE_STARTED,
+                "destination=" + destination.toAbsolutePath().normalize());
         logService.info("Clone started for destination " + destination.toAbsolutePath().normalize());
         setStatusText("Clone in progress...");
         updateControls();
-        Task<GitRepositoryService> task = new Task<>() {
-            @Override protected GitRepositoryService call() throws Exception {
+        Task<RepositoryOperations> task = new Task<>() {
+            @Override protected RepositoryOperations call() throws Exception {
                 try {
-                    GitRepositoryService service =
-                            GitRepositoryService.cloneRepository(url, destination, username, secret);
+                    RepositoryOperations service = repositoryServiceFactory.cloneRepository(
+                            url, destination, username, secret);
                     if (authenticatedAccount != null) {
                         service.setAuthenticatedAccount(authenticatedAccount);
                     }
@@ -900,6 +975,8 @@ public class GitDeskApplication extends Application {
             actionsMenuBusy = false;
             operationRunning = false;
             Throwable failure = task.getException();
+            logService.event(ApplicationEvent.CLONE_FAILED,
+                    failure.getClass().getSimpleName());
             logService.error("Clone failed.", failure);
             setStatusText("Clone failed: " + errorMessage(failure));
             updateControls();
@@ -913,9 +990,12 @@ public class GitDeskApplication extends Application {
 
     private void showDiff(String path, boolean staged) {
         if (repositoryService == null) return;
+        logService.event(ApplicationEvent.WORKING_FILE_SELECTED,
+                staged ? "staged" : "unstaged");
         try {
             workspace().renderDiff(repositoryService.getDiff(path, staged));
         } catch (IOException exception) {
+            logService.error("Could not load working-tree diff.", exception);
             workspace().renderDiff(exception.getMessage());
         }
     }
@@ -923,11 +1003,12 @@ public class GitDeskApplication extends Application {
     private void updateConflictDiff(String path) {
         if (path == null || repositoryService == null) return;
         try {
-            GitRepositoryService.ConflictContents conflict = repositoryService.getConflictContents(path);
+            RepositoryOperations.ConflictContents conflict = repositoryService.getConflictContents(path);
             workspace().renderDiff("Conflict in " + path + "\n"
                     + "Review the base, ours, and theirs versions with Resolve selected.\n\n"
                     + conflict.working());
         } catch (IOException | GitAPIException exception) {
+            logService.error("Could not load conflict diff.", exception);
             workspace().renderDiff(exception.getMessage());
         }
     }
@@ -935,62 +1016,71 @@ public class GitDeskApplication extends Application {
     private void openConflictEditor(String path) {
         if (path == null || repositoryService == null) return;
         try {
+            logService.event(ApplicationEvent.CONFLICT_RESOLUTION_OPENED, path);
             workspace().showConflictEditor(path, repositoryService.getConflictContents(path));
         } catch (IOException | GitAPIException exception) {
+            logService.error("Could not load conflict contents.", exception);
             showError("Could not load conflict", exception);
         }
     }
 
-    private void showCommitDiff(GitRepositoryService.CommitEntry commit) {
+    private void showCommitDiff(RepositoryOperations.CommitEntry commit) {
         if (commit == null) { workspace().showWorkingChanges(); return; }
         if (repositoryService == null) return;
         try {
             workspace().showCommit(commit, repositoryService.getCommitFiles(commit.objectId()),
                     repositoryService.getCommitDiff(commit.objectId()));
         } catch (IOException exception) {
+            logService.error("Could not load commit diff.", exception);
             workspace().renderDiff(exception.getMessage());
         }
     }
 
-    private void showCommitFileDiff(GitRepositoryService.CommitEntry commit, String path) {
+    private void showCommitFileDiff(RepositoryOperations.CommitEntry commit, String path) {
         if (path == null || repositoryService == null) return;
         try {
             workspace().renderDiff("Commit " + commit.shortId() + " — " + path + "\n\n"
                     + repositoryService.getCommitFileDiff(commit.objectId(), path));
         } catch (IOException exception) {
+            logService.error("Could not load commit file diff.", exception);
             workspace().renderDiff(exception.getMessage());
         }
     }
 
-    private void showStashDiff(GitRepositoryService.StashEntry stash) {
+    private void showStashDiff(RepositoryOperations.StashEntry stash) {
         if (stash == null) { workspace().showWorkingChanges(); return; }
         if (repositoryService == null) return;
         try {
             workspace().showStash(stash, repositoryService.getStashFiles(stash.objectId()),
                     repositoryService.getStashDiff(stash.objectId()));
         } catch (IOException exception) {
+            logService.error("Could not load stash diff.", exception);
             workspace().renderDiff(exception.getMessage());
         }
     }
 
-    private void showStashFileDiff(GitRepositoryService.StashEntry stash, String path) {
+    private void showStashFileDiff(RepositoryOperations.StashEntry stash, String path) {
         if (path == null || repositoryService == null) return;
         try {
             workspace().renderDiff(stash.reference() + " — " + path + "\n\n"
                     + repositoryService.getStashFileDiff(stash.objectId(), path));
         } catch (IOException exception) {
+            logService.error("Could not load stash file diff.", exception);
             workspace().renderDiff(exception.getMessage());
         }
     }
 
     private void choosePatchDestination() {
         if (repositoryService == null) return;
+        logService.event(ApplicationEvent.PATCH_DESTINATION_CHOOSER_OPENED, "Export working changes");
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Export local changes as a patch");
         chooser.setInitialFileName("gitpilot-changes.patch");
         chooser.getExtensionFilters().add(
                 new FileChooser.ExtensionFilter("Git patch files (*.patch)", "*.patch"));
         File selected = chooser.showSaveDialog(stage);
+        logService.event(ApplicationEvent.PATCH_DESTINATION_CHOOSER_CLOSED,
+                selected == null ? "cancelled" : "selection made");
         if (selected != null) {
             Path destination = selected.toPath();
             if (!destination.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".patch")) {
@@ -1025,7 +1115,7 @@ public class GitDeskApplication extends Application {
     private void showMessage(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.initOwner(stage);
-        DialogStyler.apply(alert);
+        DialogStyler.apply(alert, logService::event);
         alert.setTitle(title);
         alert.setHeaderText(title);
         alert.setContentText(message);
@@ -1033,9 +1123,13 @@ public class GitDeskApplication extends Application {
     }
 
     private void showError(String title, Throwable exception) {
+        logService.event(ApplicationEvent.ERROR_DIALOG_SHOWN,
+                title + " (" + (exception == null ? "unknown"
+                        : exception.getClass().getSimpleName()) + ")");
+        logService.error(title, exception);
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.initOwner(stage);
-        DialogStyler.apply(alert);
+        DialogStyler.apply(alert, logService::event);
         alert.setTitle(title);
         alert.setHeaderText(title);
         alert.setContentText(errorMessage(exception));
@@ -1050,6 +1144,7 @@ public class GitDeskApplication extends Application {
 
     @Override
     public void stop() {
+        logService.event(ApplicationEvent.APPLICATION_STOPPED, "GitPilot");
         stopWorktreeWatcher();
         persistOpenRepositories();
         repositoryTabs.closeAll();

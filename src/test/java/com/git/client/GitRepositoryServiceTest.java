@@ -238,7 +238,7 @@ class GitRepositoryServiceTest {
             Files.writeString(file, "newer stash\n");
             service.stash();
 
-            List<GitRepositoryService.StashEntry> stashes = service.getStashes();
+            List<RepositoryOperations.StashEntry> stashes = service.getStashes();
             assertEquals(2, stashes.size());
             assertTrue(service.applyStash(stashes.get(1).objectId(), false).contains("Applied"));
             assertEquals("older stash\n", Files.readString(file).replace("\r\n", "\n"));
@@ -249,8 +249,8 @@ class GitRepositoryServiceTest {
             service.stash();
             Files.writeString(file, "stash to keep\n");
             service.stash();
-            List<GitRepositoryService.StashEntry> popStashes = service.getStashes();
-            GitRepositoryService.StashEntry selectedForPop = popStashes.get(1);
+            List<RepositoryOperations.StashEntry> popStashes = service.getStashes();
+            RepositoryOperations.StashEntry selectedForPop = popStashes.get(1);
             String remainingStashId = popStashes.get(0).objectId();
             assertTrue(service.applyStash(selectedForPop.objectId(), true).contains("Popped"));
             assertEquals("selected for pop\n", Files.readString(file).replace("\r\n", "\n"));
@@ -276,7 +276,7 @@ class GitRepositoryServiceTest {
             Files.writeString(tracked, "base\nstaged change\nunstaged change\n");
             service.stash();
 
-            GitRepositoryService.StashEntry stash = service.getStashes().get(0);
+            RepositoryOperations.StashEntry stash = service.getStashes().get(0);
             assertEquals("stash@{0}", stash.reference());
             assertTrue(service.getStashFiles(stash.objectId())
                     .containsAll(List.of("work.txt", "new-work.txt")));
@@ -306,7 +306,7 @@ class GitRepositoryServiceTest {
         try (GitRepositoryService service = GitRepositoryService.open(directory)) {
             service.stage(List.of("tracked.txt", "staged.txt"));
             Files.writeString(tracked, "base\nstaged change\nunstaged change\n");
-            GitRepositoryService.RepositoryState before = service.getState();
+            RepositoryOperations.RepositoryState before = service.getState();
             Path patchFile = cloneDirectory.resolve("changes.patch");
             service.writeWorkingTreePatch(patchFile);
             String patch = Files.readString(patchFile, StandardCharsets.UTF_8);
@@ -544,7 +544,7 @@ class GitRepositoryServiceTest {
 
             service.merge("feature/conflict");
             assertEquals(List.of("conflict.txt"), service.getConflictPaths());
-            GitRepositoryService.ConflictContents conflict =
+            RepositoryOperations.ConflictContents conflict =
                     service.getConflictContents("conflict.txt");
             assertEquals("base\n", conflict.base());
             assertEquals("ours\n", conflict.ours());

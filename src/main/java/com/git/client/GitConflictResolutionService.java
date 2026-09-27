@@ -24,7 +24,7 @@ final class GitConflictResolutionService {
         return git.status().call().getConflicting().stream().sorted().toList();
     }
 
-    GitRepositoryService.ConflictContents getConflictContents(String path)
+    RepositoryOperations.ConflictContents getConflictContents(String path)
             throws IOException, GitAPIException {
         validateConflictPath(path);
         DirCache cache = git.getRepository().readDirCache();
@@ -58,7 +58,7 @@ final class GitConflictResolutionService {
             }
             working = new String(bytes, StandardCharsets.UTF_8);
         }
-        return new GitRepositoryService.ConflictContents(base, ours, theirs, working);
+        return new RepositoryOperations.ConflictContents(base, ours, theirs, working);
     }
 
     void resolveConflict(String path, String contents) throws IOException, GitAPIException {

@@ -24,7 +24,7 @@ final class ConflictResolutionDocument {
         this.choices = new ArrayList<>(Collections.nCopies(hunks.size(), null));
     }
 
-    static ConflictResolutionDocument parse(GitRepositoryService.ConflictContents conflict) {
+    static ConflictResolutionDocument parse(RepositoryOperations.ConflictContents conflict) {
         String working = conflict.working() == null ? "" : conflict.working();
         String[] lines = working.split("\\R", -1);
         List<String> context = new ArrayList<>();

@@ -140,7 +140,7 @@ final class GitAccountService {
         }
     }
 
-    static final class Account implements AutoCloseable {
+    static final class Account implements GitCredentials, AutoCloseable {
         private final Provider provider;
         private final String username;
         private final char[] token;
@@ -152,8 +152,9 @@ final class GitAccountService {
         }
 
         Provider provider() { return provider; }
-        String username() { return username; }
-        char[] token() { return token.clone(); }
+        @Override public String providerId() { return provider.id(); }
+        @Override public String username() { return username; }
+        @Override public char[] token() { return token.clone(); }
 
         @Override public void close() {
             Arrays.fill(token, '\0');

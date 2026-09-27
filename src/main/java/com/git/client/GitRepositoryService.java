@@ -31,7 +31,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.StreamSupport;
 
-public final class GitRepositoryService implements AutoCloseable {
+/**
+ * JGit adapter and repository facade. Keep JGit command details behind {@link RepositoryOperations}.
+ */
+public final class GitRepositoryService implements RepositoryOperations {
     private final Git git;
     private final GitDiffHistoryService diffHistoryService;
     private final GitConflictResolutionService conflictResolutionService;
@@ -113,6 +116,21 @@ public final class GitRepositoryService implements AutoCloseable {
         return git.getRepository();
     }
 
+    @Override
+    public Path workTreePath() {
+        return git.getRepository().getWorkTree().toPath();
+    }
+
+    @Override
+    public Path gitDirectoryPath() {
+        return git.getRepository().getDirectory().toPath();
+    }
+
+    @Override
+    public String repositoryName() {
+        return git.getRepository().getWorkTree().getName();
+    }
+
     public boolean setHttpsCredentials(String username, char[] password) throws IOException {
         if (username == null || username.isBlank() || password == null || password.length == 0) {
             throw new IllegalArgumentException("Enter both a username and a password or access token.");
@@ -138,13 +156,19 @@ public final class GitRepositoryService implements AutoCloseable {
         credentialsPersisted = false;
     }
 
-    public void setAuthenticatedAccount(GitAccountService.Account account) {
+    public void setAuthenticatedAccount(GitCredentials account) {
         clearAuthenticatedAccount();
         if (account == null) return;
         char[] token = account.token();
         try {
+            GitAccountService.Provider provider;
+            try {
+                provider = GitAccountService.Provider.fromId(account.providerId());
+            } catch (IOException exception) {
+                throw new IllegalArgumentException("Unsupported Git account provider.", exception);
+            }
             accountCredentialsProvider = new AccountCredentialsProvider(
-                    account.provider(), account.username(), token, credentialsProvider);
+                    provider, account.username(), token, credentialsProvider);
         } finally {
             java.util.Arrays.fill(token, '\0');
         }
@@ -168,7 +192,7 @@ public final class GitRepositoryService implements AutoCloseable {
         }
     }
 
-    public RepositoryState getState() throws GitAPIException, IOException {
+    public RepositoryOperations.RepositoryState getState() throws GitAPIException, IOException {
         Status status = git.status().call();
         Set<String> staged = new LinkedHashSet<>();
         staged.addAll(status.getAdded());
@@ -181,7 +205,8 @@ public final class GitRepositoryService implements AutoCloseable {
         unstaged.addAll(status.getUntracked());
 
         String branch = git.getRepository().getBranch();
-        return new RepositoryState(branch, List.copyOf(unstaged), List.copyOf(staged));
+        return new RepositoryOperations.RepositoryState(
+                branch, List.copyOf(unstaged), List.copyOf(staged));
     }
 
     public String getDiff(String path, boolean staged) throws IOException {
@@ -204,7 +229,8 @@ public final class GitRepositoryService implements AutoCloseable {
         return conflictResolutionService.getConflictPaths();
     }
 
-    public ConflictContents getConflictContents(String path) throws IOException, GitAPIException {
+    public RepositoryOperations.ConflictContents getConflictContents(String path)
+            throws IOException, GitAPIException {
         return conflictResolutionService.getConflictContents(path);
     }
 
@@ -278,16 +304,17 @@ public final class GitRepositoryService implements AutoCloseable {
                 .call();
     }
 
-    public List<CommitEntry> getHistory() throws IOException {
+    public List<RepositoryOperations.CommitEntry> getHistory() throws IOException {
         return diffHistoryService.getHistory();
     }
 
-    public List<StashEntry> getStashes() throws GitAPIException {
+    public List<RepositoryOperations.StashEntry> getStashes() throws GitAPIException {
         List<RevCommit> commits = git.stashList().call().stream().toList();
-        List<StashEntry> stashes = new java.util.ArrayList<>(commits.size());
+        List<RepositoryOperations.StashEntry> stashes = new java.util.ArrayList<>(commits.size());
         for (int index = 0; index < commits.size(); index++) {
             RevCommit stash = commits.get(index);
-            stashes.add(new StashEntry("stash@{" + index + "}", stash.getShortMessage(),
+            stashes.add(new RepositoryOperations.StashEntry(
+                    "stash@{" + index + "}", stash.getShortMessage(),
                     stash.getName().substring(0, 7),
                     Instant.ofEpochSecond(stash.getCommitTime()), stash.getName()));
         }
@@ -695,20 +722,6 @@ public final class GitRepositoryService implements AutoCloseable {
         private void clear() {
             java.util.Arrays.fill(token, '\0');
         }
-    }
-
-    public record RepositoryState(String branch, List<String> unstaged, List<String> staged) {
-    }
-
-    public record ConflictContents(String base, String ours, String theirs, String working) {
-    }
-
-    public record CommitEntry(String message, String shortId, String author, Instant date,
-                              String objectId) {
-    }
-
-    public record StashEntry(String reference, String message, String shortId, Instant date,
-                             String objectId) {
     }
 
     private record UndoSnapshot(String commitId, String branch) {

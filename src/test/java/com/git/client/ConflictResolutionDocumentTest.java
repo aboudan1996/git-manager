@@ -16,7 +16,7 @@ class ConflictResolutionDocumentTest {
                 + "<<<<<<< HEAD\ncurrent two\n=======\nincoming two\n>>>>>>> feature\n"
                 + "after\n";
         ConflictResolutionDocument document = ConflictResolutionDocument.parse(
-                new GitRepositoryService.ConflictContents("base", "ours", "theirs", working));
+                new RepositoryOperations.ConflictContents("base", "ours", "theirs", working));
 
         assertEquals(2, document.hunks().size());
         assertFalse(document.hasSelections());
@@ -34,7 +34,7 @@ class ConflictResolutionDocumentTest {
         String working = "<<<<<<< HEAD\ncurrent\n||||||| base\ncommon ancestor\n"
                 + "=======\nincoming\n>>>>>>> feature\n";
         ConflictResolutionDocument document = ConflictResolutionDocument.parse(
-                new GitRepositoryService.ConflictContents("base", "ours", "theirs", working));
+                new RepositoryOperations.ConflictContents("base", "ours", "theirs", working));
         document.select(0, ConflictResolutionDocument.Choice.INCOMING);
 
         assertEquals("incoming\n", document.compose());
@@ -43,7 +43,7 @@ class ConflictResolutionDocumentTest {
     @Test
     void createsOneSelectableHunkWhenConflictMarkersAreNotPresent() {
         ConflictResolutionDocument document = ConflictResolutionDocument.parse(
-                new GitRepositoryService.ConflictContents(null, "current version\n",
+                new RepositoryOperations.ConflictContents(null, "current version\n",
                         "incoming version\n", "working copy\n"));
         assertEquals(1, document.hunks().size());
         document.select(0, ConflictResolutionDocument.Choice.INCOMING);

@@ -17,7 +17,7 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 /** Writes application diagnostics to the console and a rotating file, redacting embedded credentials. */
-final class LogService implements AutoCloseable {
+final class LogService implements ApplicationLogger {
     private static final Logger LOGGER = Logger.getLogger("com.git.client");
     private static final Pattern URL_CREDENTIALS =
             Pattern.compile("(?i)(https?://)[^/@\\s]+@");
@@ -58,20 +58,31 @@ final class LogService implements AutoCloseable {
         fileHandler = initializedFile;
     }
 
-    Path logFile() {
+    @Override
+    public Path logFile() {
         return LOG_FILE;
     }
 
-    void info(String message) {
+    @Override
+    public void info(String message) {
         LOGGER.info(message);
     }
 
-    void warning(String message) {
+    @Override
+    public void warning(String message) {
         LOGGER.warning(message);
     }
 
-    void error(String message, Throwable error) {
+    @Override
+    public void error(String message, Throwable error) {
         LOGGER.log(Level.SEVERE, message, error);
+    }
+
+    @Override
+    public void event(ApplicationEvent event, String detail) {
+        // Callers provide safe metadata only; secrets are never event details.
+        info("event=" + event.name() + (detail == null || detail.isBlank()
+                ? "" : " detail=" + detail));
     }
 
     @Override

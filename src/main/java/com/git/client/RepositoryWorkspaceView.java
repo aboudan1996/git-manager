@@ -47,11 +47,12 @@ final class RepositoryWorkspaceView {
         void showConflictDiff(String path);
         void resolveConflict(String path, String contents);
         void loadConflict(String path);
-        void historySelected(GitRepositoryService.CommitEntry commit);
-        void commitFileSelected(GitRepositoryService.CommitEntry commit, String path);
-        void stashSelected(GitRepositoryService.StashEntry stash);
-        void stashFileSelected(GitRepositoryService.StashEntry stash, String path);
-        void applyStash(GitRepositoryService.StashEntry stash, boolean dropAfterApply);
+        void userEvent(ApplicationEvent event, String detail);
+        void historySelected(RepositoryOperations.CommitEntry commit);
+        void commitFileSelected(RepositoryOperations.CommitEntry commit, String path);
+        void stashSelected(RepositoryOperations.StashEntry stash);
+        void stashFileSelected(RepositoryOperations.StashEntry stash, String path);
+        void applyStash(RepositoryOperations.StashEntry stash, boolean dropAfterApply);
     }
 
     private static final DateTimeFormatter COMMIT_DATE =
@@ -59,8 +60,8 @@ final class RepositoryWorkspaceView {
 
     private final Stage owner;
     private final Actions actions;
-    private final ListView<GitRepositoryService.CommitEntry> history = new ListView<>();
-    private final ListView<GitRepositoryService.StashEntry> stashes = new ListView<>();
+    private final ListView<RepositoryOperations.CommitEntry> history = new ListView<>();
+    private final ListView<RepositoryOperations.StashEntry> stashes = new ListView<>();
     private final ListView<String> recent = new ListView<>();
     private final ListView<String> committedFiles = new ListView<>();
     private final ListView<String> stashedFiles = new ListView<>();
@@ -83,14 +84,14 @@ final class RepositoryWorkspaceView {
     private final Button stageButton = new Button("Stage selected");
     private final Button unstageButton = new Button("Unstage selected");
     private final Button commitButton = new Button("Commit changes");
-    private List<GitRepositoryService.CommitEntry> allCommits = List.of();
+    private List<RepositoryOperations.CommitEntry> allCommits = List.of();
     private boolean repositoryAvailable;
     private boolean operationAvailable = true;
-    private GitRepositoryService.CommitEntry pressedCommit;
+    private RepositoryOperations.CommitEntry pressedCommit;
     private boolean pressedCommitWasSelected;
-    private GitRepositoryService.StashEntry pressedStash;
+    private RepositoryOperations.StashEntry pressedStash;
     private boolean pressedStashWasSelected;
-    private List<GitRepositoryService.StashEntry> allStashes = List.of();
+    private List<RepositoryOperations.StashEntry> allStashes = List.of();
     private VBox unstagedPane;
     private VBox stagedPane;
     private VBox repositoryWorkspace;
@@ -130,9 +131,13 @@ final class RepositoryWorkspaceView {
         });
         search.setPromptText("Search commits...");
         search.getStyleClass().add("search-field");
-        search.textProperty().addListener((o, old, query) -> filterHistory(query));
+        search.textProperty().addListener((o, old, query) -> {
+            filterHistory(query);
+            actions.userEvent(ApplicationEvent.COMMIT_SEARCH_UPDATED,
+                    "queryLength=" + (query == null ? 0 : query.length()));
+        });
         history.setCellFactory(list -> new ListCell<>() {
-            @Override protected void updateItem(GitRepositoryService.CommitEntry commit, boolean empty) {
+            @Override protected void updateItem(RepositoryOperations.CommitEntry commit, boolean empty) {
                 super.updateItem(commit, empty);
                 if (empty || commit == null) { setText(null); setGraphic(null); return; }
                 Label summary = new Label(commit.message());
@@ -150,7 +155,7 @@ final class RepositoryWorkspaceView {
                     && pressedCommit.equals(history.getSelectionModel().getSelectedItem());
         });
         history.setOnMouseClicked(event -> {
-            GitRepositoryService.CommitEntry clickedCommit = commitCellAt(event);
+            RepositoryOperations.CommitEntry clickedCommit = commitCellAt(event);
             if (pressedCommitWasSelected && pressedCommit != null
                     && pressedCommit.equals(clickedCommit)) {
                 history.getSelectionModel().clearSelection();
@@ -216,15 +221,21 @@ final class RepositoryWorkspaceView {
         conflictPane.getStyleClass().add("change-pane");
         VBox.setVgrow(conflicts, Priority.ALWAYS);
         conflicts.getSelectionModel().selectedItemProperty()
-                .addListener((o, old, path) -> actions.showConflictDiff(path));
+                .addListener((o, old, path) -> {
+                    if (path != null) actions.userEvent(ApplicationEvent.CONFLICT_SELECTED, "file");
+                    actions.showConflictDiff(path);
+                });
         committedFiles.setPlaceholder(new Label("No files changed by this commit"));
         committedFiles.getStyleClass().add("change-list");
         committedFiles.setPrefHeight(82);
         committedFiles.setMinHeight(82);
         committedFiles.setMaxHeight(82);
         committedFiles.getSelectionModel().selectedItemProperty().addListener((o, old, path) -> {
-            GitRepositoryService.CommitEntry selected = selectedCommit();
-            if (path != null && selected != null) actions.commitFileSelected(selected, path);
+            RepositoryOperations.CommitEntry selected = selectedCommit();
+            if (path != null && selected != null) {
+                actions.userEvent(ApplicationEvent.COMMIT_FILE_SELECTED, selected.shortId());
+                actions.commitFileSelected(selected, path);
+            }
         });
         committedPane.getChildren().setAll(sectionTitle("Committed changes"), committedFiles);
         committedPane.getStyleClass().add("change-pane");
@@ -235,8 +246,11 @@ final class RepositoryWorkspaceView {
         stashedFiles.setMinHeight(82);
         stashedFiles.setMaxHeight(82);
         stashedFiles.getSelectionModel().selectedItemProperty().addListener((o, old, path) -> {
-            GitRepositoryService.StashEntry selected = selectedStash();
-            if (path != null && selected != null) actions.stashFileSelected(selected, path);
+            RepositoryOperations.StashEntry selected = selectedStash();
+            if (path != null && selected != null) {
+                actions.userEvent(ApplicationEvent.STASH_FILE_SELECTED, selected.reference());
+                actions.stashFileSelected(selected, path);
+            }
         });
         stashedPane.getChildren().setAll(sectionTitle("Stashed changes"), stashedFiles);
         stashedPane.getStyleClass().add("change-pane");
@@ -254,13 +268,19 @@ final class RepositoryWorkspaceView {
         stashes.setPlaceholder(new Label("No stashes yet"));
         stashSearch.setPromptText("Search stashes...");
         stashSearch.getStyleClass().add("search-field");
-        stashSearch.textProperty().addListener((o, old, query) -> filterStashes(query));
+        stashSearch.textProperty().addListener((o, old, query) -> {
+            filterStashes(query);
+            actions.userEvent(ApplicationEvent.STASH_SEARCH_UPDATED,
+                    "queryLength=" + (query == null ? 0 : query.length()));
+        });
         stashes.setCellFactory(list -> new ListCell<>() {
             private final MenuItem applyStash = new MenuItem("Apply selected stash");
             private final MenuItem popStash = new MenuItem("Pop selected stash");
             private final ContextMenu stashMenu = new ContextMenu(applyStash, popStash);
 
             {
+                stashMenu.setOnShowing(event ->
+                        actions.userEvent(ApplicationEvent.STASH_CONTEXT_MENU_OPENED, "Stash actions"));
                 applyStash.setOnAction(event -> {
                     if (getItem() != null) actions.applyStash(getItem(), false);
                 });
@@ -274,7 +294,7 @@ final class RepositoryWorkspaceView {
                 });
             }
 
-            @Override protected void updateItem(GitRepositoryService.StashEntry stash, boolean empty) {
+            @Override protected void updateItem(RepositoryOperations.StashEntry stash, boolean empty) {
                 super.updateItem(stash, empty);
                 if (empty || stash == null) {
                     setText(null);
@@ -298,7 +318,7 @@ final class RepositoryWorkspaceView {
                     && pressedStash.equals(stashes.getSelectionModel().getSelectedItem());
         });
         stashes.setOnMouseClicked(event -> {
-            GitRepositoryService.StashEntry clickedStash = stashCellAt(event);
+            RepositoryOperations.StashEntry clickedStash = stashCellAt(event);
             if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY
                     && pressedStashWasSelected && pressedStash != null
                     && pressedStash.equals(clickedStash)) {
@@ -392,8 +412,8 @@ final class RepositoryWorkspaceView {
     }
 
     void updateRepository(List<String> unstagedPaths, List<String> stagedPaths,
-                          List<String> conflictPaths, List<GitRepositoryService.CommitEntry> commits,
-                          List<GitRepositoryService.StashEntry> stashEntries,
+                          List<String> conflictPaths, List<RepositoryOperations.CommitEntry> commits,
+                          List<RepositoryOperations.StashEntry> stashEntries,
                           String statusText) {
         unstaged.setItems(FXCollections.observableArrayList(unstagedPaths));
         staged.setItems(FXCollections.observableArrayList(stagedPaths));
@@ -439,11 +459,11 @@ final class RepositoryWorkspaceView {
         showWorkingChanges();
     }
 
-    GitRepositoryService.CommitEntry selectedCommit() {
+    RepositoryOperations.CommitEntry selectedCommit() {
         return history.getSelectionModel().getSelectedItem();
     }
 
-    GitRepositoryService.StashEntry selectedStash() {
+    RepositoryOperations.StashEntry selectedStash() {
         return stashes.getSelectionModel().getSelectedItem();
     }
 
@@ -465,7 +485,7 @@ final class RepositoryWorkspaceView {
         status.setText(text);
     }
 
-    void showCommit(GitRepositoryService.CommitEntry commit, List<String> files, String diff) {
+    void showCommit(RepositoryOperations.CommitEntry commit, List<String> files, String diff) {
         changesTitle.setText("Committed changes");
         setVisibleManaged(unstagedPane, false);
         setVisibleManaged(stagedPane, false);
@@ -476,7 +496,7 @@ final class RepositoryWorkspaceView {
         renderDiff("Commit " + commit.shortId() + " — " + commit.message() + "\n\n" + diff);
     }
 
-    void showStash(GitRepositoryService.StashEntry stash, List<String> files, String diff) {
+    void showStash(RepositoryOperations.StashEntry stash, List<String> files, String diff) {
         changesTitle.setText("Stashed changes");
         setVisibleManaged(unstagedPane, false);
         setVisibleManaged(stagedPane, false);
@@ -517,7 +537,7 @@ final class RepositoryWorkspaceView {
         }
     }
 
-    void showConflictEditor(String path, GitRepositoryService.ConflictContents conflict) {
+    void showConflictEditor(String path, RepositoryOperations.ConflictContents conflict) {
         ConflictResolutionDocument document = ConflictResolutionDocument.parse(conflict);
         VBox hunks = new VBox(12);
         hunks.getStyleClass().add("conflict-hunks");
@@ -527,7 +547,7 @@ final class RepositoryWorkspaceView {
         resolution.getStyleClass().add("resolution-editor");
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(owner);
-        DialogStyler.apply(dialog);
+        DialogStyler.apply(dialog, actions::userEvent);
         dialog.setTitle("Resolve conflict");
         dialog.setHeaderText(path + " — select changes for each conflict");
         ButtonType resolveType = new ButtonType("Mark resolved", ButtonBar.ButtonData.OK_DONE);
@@ -616,7 +636,7 @@ final class RepositoryWorkspaceView {
 
     private void filterHistory(String query) {
         String normalized = query == null ? "" : query.trim().toLowerCase();
-        List<GitRepositoryService.CommitEntry> filtered = allCommits.stream()
+        List<RepositoryOperations.CommitEntry> filtered = allCommits.stream()
                 .filter(commit -> normalized.isEmpty()
                         || commit.message().toLowerCase().contains(normalized)
                         || commit.author().toLowerCase().contains(normalized)
@@ -627,7 +647,7 @@ final class RepositoryWorkspaceView {
 
     private void filterStashes(String query) {
         String normalized = query == null ? "" : query.trim().toLowerCase();
-        List<GitRepositoryService.StashEntry> filtered = allStashes.stream()
+        List<RepositoryOperations.StashEntry> filtered = allStashes.stream()
                 .filter(stash -> normalized.isEmpty()
                         || stash.message().toLowerCase().contains(normalized)
                         || stash.reference().toLowerCase().contains(normalized)
@@ -636,27 +656,27 @@ final class RepositoryWorkspaceView {
         stashes.setItems(FXCollections.observableArrayList(filtered));
     }
 
-    private GitRepositoryService.CommitEntry commitCellAt(MouseEvent event) {
+    private RepositoryOperations.CommitEntry commitCellAt(MouseEvent event) {
         Node target = event.getPickResult().getIntersectedNode();
         while (target != null && !(target instanceof ListCell<?>)) {
             target = target.getParent();
         }
         if (target instanceof ListCell<?> cell
                 && cell.getListView() == history
-                && cell.getItem() instanceof GitRepositoryService.CommitEntry commit) {
+                && cell.getItem() instanceof RepositoryOperations.CommitEntry commit) {
             return commit;
         }
         return null;
     }
 
-    private GitRepositoryService.StashEntry stashCellAt(MouseEvent event) {
+    private RepositoryOperations.StashEntry stashCellAt(MouseEvent event) {
         Node target = event.getPickResult().getIntersectedNode();
         while (target != null && !(target instanceof ListCell<?>)) {
             target = target.getParent();
         }
         if (target instanceof ListCell<?> cell
                 && cell.getListView() == stashes
-                && cell.getItem() instanceof GitRepositoryService.StashEntry stash) {
+                && cell.getItem() instanceof RepositoryOperations.StashEntry stash) {
             return stash;
         }
         return null;

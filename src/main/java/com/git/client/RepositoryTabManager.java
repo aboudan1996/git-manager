@@ -13,9 +13,9 @@ import java.util.function.Consumer;
 /** Owns repository-tab lifetimes and the matching Git service instances. */
 final class RepositoryTabManager {
     private final TabPane tabs = new TabPane();
-    private final Map<String, GitRepositoryService> repositories = new LinkedHashMap<>();
+    private final Map<String, RepositoryOperations> repositories = new LinkedHashMap<>();
     private Consumer<Tab> selectionListener = ignored -> { };
-    private Runnable closeListener = () -> { };
+    private Consumer<String> closeListener = ignored -> { };
 
     RepositoryTabManager() {
         tabs.getSelectionModel().selectedItemProperty()
@@ -26,14 +26,14 @@ final class RepositoryTabManager {
     List<Tab> tabs() { return List.copyOf(tabs.getTabs()); }
     Tab selected() { return tabs.getSelectionModel().getSelectedItem(); }
     String path(Tab tab) { return tab == null ? null : (String) tab.getProperties().get("repository-path"); }
-    GitRepositoryService repository(String path) { return repositories.get(path); }
-    List<GitRepositoryService> repositories() { return List.copyOf(repositories.values()); }
+    RepositoryOperations repository(String path) { return repositories.get(path); }
+    List<RepositoryOperations> repositories() { return List.copyOf(repositories.values()); }
     boolean contains(String path) { return repositories.containsKey(path); }
 
     void onSelection(Consumer<Tab> listener) { selectionListener = listener; }
-    void onClosed(Runnable listener) { closeListener = listener; }
+    void onClosed(Consumer<String> listener) { closeListener = listener; }
 
-    void add(Path directory, GitRepositoryService repository) {
+    void add(Path directory, RepositoryOperations repository) {
         String path = normalize(directory);
         repositories.put(path, repository);
         Tab tab = new Tab(directory.getFileName() == null ? path : directory.getFileName().toString());
@@ -41,9 +41,9 @@ final class RepositoryTabManager {
         tab.setTooltip(new Tooltip(path));
         tab.getProperties().put("repository-path", path);
         tab.setOnClosed(event -> {
-            GitRepositoryService closed = repositories.remove(path);
+            RepositoryOperations closed = repositories.remove(path);
             if (closed != null) closed.close();
-            closeListener.run();
+            closeListener.accept(path);
         });
         tabs.getTabs().add(tab);
         tabs.getSelectionModel().select(tab);
@@ -53,10 +53,10 @@ final class RepositoryTabManager {
         Tab tab = tabs.getTabs().stream().filter(candidate -> path.equals(path(candidate)))
                 .findFirst().orElse(null);
         if (tab == null) return;
-        GitRepositoryService closed = repositories.remove(path);
+        RepositoryOperations closed = repositories.remove(path);
         if (closed != null) closed.close();
         tabs.getTabs().remove(tab);
-        closeListener.run();
+        closeListener.accept(path);
     }
 
     void select(String path) {
@@ -72,7 +72,7 @@ final class RepositoryTabManager {
     void setDisabled(boolean disabled) { tabs.setDisable(disabled); }
 
     void closeAll() {
-        repositories.values().forEach(GitRepositoryService::close);
+        repositories.values().forEach(RepositoryOperations::close);
         repositories.clear();
     }
 
