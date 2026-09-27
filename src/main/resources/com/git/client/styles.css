@@ -67,6 +67,11 @@
     -fx-background-color: #26344c;
     -fx-text-fill: #a9c8ff;
     -fx-font-size: 12px;
+    -fx-cursor: hand;
+}
+
+.branch-badge:hover {
+    -fx-background-color: #34496b;
 }
 
 .muted-badge {

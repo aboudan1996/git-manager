@@ -7,10 +7,12 @@ import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressIndicator;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tab;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
@@ -46,6 +48,7 @@ public class GitDeskApplication extends Application {
     private javafx.scene.control.Button openRepositoryButton;
     private javafx.scene.control.Button cloneRepositoryButton;
     private javafx.scene.control.Button refreshButton;
+    private ContextMenu branchContextMenu;
     private boolean operationRunning;
     private boolean actionsMenuBusy;
     private String preferredRepositoryPath = "";
@@ -141,6 +144,10 @@ public class GitDeskApplication extends Application {
             @Override public void remoteAction(String operation, GitActionsMenu.RemoteAction action) {
                 runRemoteAction(operation, action::run);
             }
+            @Override public void remoteAction(String operation, GitActionsMenu.RemoteAction action,
+                                               Runnable onSuccess) {
+                runRemoteAction(operation, action::run, onSuccess);
+            }
             @Override public void setStatus(String text) { setStatusText(text); }
             @Override public void logInfo(String message) { logService.info(message); }
             @Override public void showError(String title, Throwable error) {
@@ -161,6 +168,21 @@ public class GitDeskApplication extends Application {
         appName.getStyleClass().add("app-name");
         repositoryLabel.getStyleClass().addAll("repository-label", "repository-switcher");
         branchLabel.getStyleClass().addAll("branch-badge", "muted-badge");
+        branchLabel.setTooltip(new Tooltip(
+                "Click to search local and remote branches; right-click for branch actions"));
+        branchLabel.setOnMouseClicked(event -> {
+            if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY
+                    && repositoryService != null && !operationRunning) {
+                actionsMenu.switchBranch();
+            }
+        });
+        MenuItem createBranchFromCurrent = new MenuItem("Create branch from current...");
+        createBranchFromCurrent.setOnAction(event -> actionsMenu.createBranchFromCurrent());
+        MenuItem searchBranches = new MenuItem("Search and switch branch...");
+        searchBranches.setOnAction(event -> actionsMenu.switchBranch());
+        branchContextMenu = new ContextMenu(createBranchFromCurrent,
+                new SeparatorMenuItem(), searchBranches);
+        branchLabel.setContextMenu(branchContextMenu);
         openRepositoryButton = new Button("Open repository");
         openRepositoryButton.getStyleClass().add("secondary-button");
         openRepositoryButton.setOnAction(event -> chooseRepository());
@@ -215,6 +237,7 @@ public class GitDeskApplication extends Application {
             repositoryLabel.setTooltip(null);
             branchLabel.setText("No branch");
             branchLabel.getStyleClass().setAll("branch-badge", "muted-badge");
+            branchLabel.setDisable(true);
             workspace().clear();
             workspace().setRepositoryAvailable(false);
         } else {
@@ -386,6 +409,7 @@ public class GitDeskApplication extends Application {
             repositoryLabel.setTooltip(new Tooltip(repository.getWorkTree().getAbsolutePath()));
             branchLabel.setText(state.branch());
             branchLabel.getStyleClass().remove("muted-badge");
+            branchLabel.setDisable(false);
             List<String> conflicts = repositoryService.getConflictPaths();
             String status = state.unstaged().size() + " unstaged  ·  " + state.staged().size()
                     + " staged  ·  " + conflicts.size() + " conflicts";
@@ -415,6 +439,11 @@ public class GitDeskApplication extends Application {
     }
 
     private void runRemoteAction(String operation, GitActionsMenu.RemoteAction action) {
+        runRemoteAction(operation, action, null);
+    }
+
+    private void runRemoteAction(String operation, GitActionsMenu.RemoteAction action,
+                                 Runnable onSuccess) {
         if (repositoryService == null || actionsButton.isDisabled()) return;
         actionsMenuBusy = true;
         operationRunning = true;
@@ -444,6 +473,9 @@ public class GitDeskApplication extends Application {
                         : operation + " completed successfully. " + detail);
                 logService.info(operation + " completed successfully."
                         + (detail.isBlank() ? "" : " Result: " + detail));
+                if (onSuccess != null) {
+                    onSuccess.run();
+                }
             }
             openNextRepository();
         });
@@ -559,6 +591,7 @@ public class GitDeskApplication extends Application {
         openRepositoryButton.setDisable(operationRunning);
         cloneRepositoryButton.setDisable(operationRunning);
         refreshButton.setDisable(!hasRepository || operationRunning);
+        branchLabel.setDisable(!hasRepository || operationRunning);
         repositoryTabs.setDisabled(operationRunning);
         workspace().setCommitEnabled(hasRepository && !operationRunning);
     }

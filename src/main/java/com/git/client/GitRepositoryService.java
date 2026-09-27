@@ -262,6 +262,16 @@ public final class GitRepositoryService implements AutoCloseable {
                 .toList();
     }
 
+    public List<String> getRemoteBranches() throws GitAPIException {
+        return git.branchList()
+                .setListMode(org.eclipse.jgit.api.ListBranchCommand.ListMode.REMOTE)
+                .call().stream()
+                .filter(ref -> !ref.isSymbolic())
+                .map(ref -> ref.getName().substring(Constants.R_REMOTES.length()))
+                .sorted()
+                .toList();
+    }
+
     public void createBranch(String name) throws GitAPIException {
         createBranch(name, "HEAD");
     }
@@ -277,6 +287,29 @@ public final class GitRepositoryService implements AutoCloseable {
 
     public void checkout(String branch) throws GitAPIException {
         git.checkout().setName(branch).call();
+    }
+
+    public String checkoutRemoteBranch(String remoteBranch) throws GitAPIException {
+        if (remoteBranch == null) {
+            throw new IllegalArgumentException("Select a remote tracking branch.");
+        }
+        int separator = remoteBranch.indexOf('/');
+        if (separator <= 0 || separator == remoteBranch.length() - 1) {
+            throw new IllegalArgumentException("The selected remote branch name is invalid.");
+        }
+        String localBranch = remoteBranch.substring(separator + 1);
+        List<String> localBranches = getLocalBranches();
+        if (localBranches.contains(localBranch)) {
+            checkout(localBranch);
+            return "Switched to existing local branch " + localBranch + ".";
+        }
+        git.checkout()
+                .setCreateBranch(true)
+                .setName(localBranch)
+                .setStartPoint(Constants.R_REMOTES + remoteBranch)
+                .setUpstreamMode(org.eclipse.jgit.api.CreateBranchCommand.SetupUpstreamMode.TRACK)
+                .call();
+        return "Created and switched to " + localBranch + " tracking " + remoteBranch + ".";
     }
 
     public String merge(String branch) throws GitAPIException {
@@ -337,6 +370,23 @@ public final class GitRepositoryService implements AutoCloseable {
         }
         command.call();
         return "Fetch completed.";
+    }
+
+    public String refreshRemoteBranches() throws GitAPIException {
+        List<String> remotes = git.remoteList().call().stream()
+                .map(RemoteConfig::getName)
+                .toList();
+        if (remotes.isEmpty()) {
+            return "No remotes configured; showing local branches.";
+        }
+        for (String remote : remotes) {
+            var command = git.fetch().setRemote(remote);
+            if (credentialsProvider != null) {
+                command.setCredentialsProvider(credentialsProvider);
+            }
+            command.call();
+        }
+        return "Remote branches refreshed.";
     }
 
     public String pull() throws GitAPIException {

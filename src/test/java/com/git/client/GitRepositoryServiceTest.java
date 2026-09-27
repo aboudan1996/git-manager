@@ -193,6 +193,37 @@ class GitRepositoryServiceTest {
     }
 
     @Test
+    void listsRemoteBranchesAndChecksOutTrackingBranch() throws Exception {
+        try (Git remote = Git.init().setBare(true).setDirectory(remoteDirectory.toFile()).call();
+             Git local = Git.open(directory.toFile())) {
+            Files.writeString(directory.resolve("remote-branch.txt"), "branch");
+            local.add().addFilepattern("remote-branch.txt").call();
+            local.commit().setMessage("Initial commit").call();
+            local.remoteAdd().setName("origin")
+                    .setUri(new URIish(remoteDirectory.toUri().toString())).call();
+            local.push().setRemote("origin").setRefSpecs(new org.eclipse.jgit.transport.RefSpec(
+                    "refs/heads/master:refs/heads/master")).call();
+            var remoteBranch = remote.getRepository().updateRef("refs/heads/feature/remote");
+            remoteBranch.setNewObjectId(local.getRepository().resolve("refs/heads/master"));
+            remoteBranch.update();
+        }
+
+        try (GitRepositoryService service = GitRepositoryService.open(directory)) {
+            assertTrue(service.getRemoteBranches().stream()
+                    .noneMatch(branch -> branch.equals("origin/feature/remote")));
+            assertTrue(service.refreshRemoteBranches().contains("refreshed"));
+            assertTrue(service.getRemoteBranches().contains("origin/feature/remote"));
+            assertTrue(service.checkoutRemoteBranch("origin/feature/remote")
+                    .contains("tracking origin/feature/remote"));
+            assertEquals("feature/remote", service.getState().branch());
+            assertEquals("origin", service.getRepository().getConfig()
+                    .getString("branch", "feature/remote", "remote"));
+            assertEquals("refs/heads/feature/remote", service.getRepository().getConfig()
+                    .getString("branch", "feature/remote", "merge"));
+        }
+    }
+
+    @Test
     void revertsACommitWithoutRewritingHistory() throws Exception {
         Path file = directory.resolve("revert.txt");
         Files.writeString(file, "initial");
