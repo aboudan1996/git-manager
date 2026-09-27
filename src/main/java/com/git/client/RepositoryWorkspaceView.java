@@ -23,6 +23,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 
 import java.time.ZoneId;
@@ -579,7 +580,15 @@ final class RepositoryWorkspaceView {
         VBox.setVgrow(resolution, Priority.ALWAYS);
         dialog.getDialogPane().setContent(content);
         dialog.getDialogPane().getButtonTypes().addAll(resolveType, ButtonType.CANCEL);
-        dialog.getDialogPane().setPrefSize(1080, 760);
+        double screenHeight = Screen.getScreensForRectangle(owner.getX(), owner.getY(),
+                        owner.getWidth(), owner.getHeight()).stream()
+                .findFirst()
+                .orElse(Screen.getPrimary())
+                .getVisualBounds()
+                .getHeight();
+        double dialogHeight = Math.min(680, screenHeight * 0.8);
+        dialog.getDialogPane().setPrefSize(1080, dialogHeight);
+        dialog.getDialogPane().setMaxHeight(dialogHeight);
         dialog.getDialogPane().lookupButton(resolveType).setDisable(true);
         dialog.showAndWait().filter(button -> button.getButtonData() == ButtonBar.ButtonData.OK_DONE)
                 .ifPresent(button -> actions.resolveConflict(path, resolution.getText()));

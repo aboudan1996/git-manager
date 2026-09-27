@@ -63,7 +63,7 @@
 }
 
 .add-repository-icon > .rectangle {
-    -fx-fill: #edf3fc;
+    -fx-fill: white;
 }
 
 .add-repository-button:hover .add-repository-icon > .rectangle {
