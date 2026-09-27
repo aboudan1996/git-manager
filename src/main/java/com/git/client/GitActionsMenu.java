@@ -275,6 +275,7 @@ final class GitActionsMenu {
             search.setPromptText("Search branches...");
             ListView<String> results = new ListView<>();
             results.getItems().setAll(branches);
+            results.setPlaceholder(new Label("No branches match this search"));
             results.setCellFactory(list -> new ListCell<>() {
                 @Override
                 protected void updateItem(String branch, boolean empty) {
@@ -287,7 +288,11 @@ final class GitActionsMenu {
                 results.getItems().setAll(branches.stream()
                         .filter(branch -> branch.toLowerCase(Locale.ROOT).contains(normalized))
                         .toList());
-                results.getSelectionModel().clearSelection();
+                if (results.getItems().isEmpty()) {
+                    results.getSelectionModel().clearSelection();
+                } else {
+                    results.getSelectionModel().selectFirst();
+                }
             });
             Dialog<ButtonType> dialog = new Dialog<>();
             dialog.initOwner(actions.owner());
@@ -298,6 +303,12 @@ final class GitActionsMenu {
                     ButtonType.OK, ButtonType.CANCEL);
             var okButton = dialog.getDialogPane().lookupButton(ButtonType.OK);
             okButton.disableProperty().bind(results.getSelectionModel().selectedItemProperty().isNull());
+            results.getSelectionModel().selectFirst();
+            search.setOnAction(event -> {
+                if (results.getSelectionModel().getSelectedItem() != null) {
+                    ((javafx.scene.control.Button) okButton).fire();
+                }
+            });
             results.setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2 && results.getSelectionModel().getSelectedItem() != null) {
                     ((javafx.scene.control.Button) okButton).fire();
@@ -305,6 +316,7 @@ final class GitActionsMenu {
             });
             results.setPrefSize(420, 320);
             javafx.scene.layout.VBox.setVgrow(results, Priority.ALWAYS);
+            dialog.setOnShown(event -> search.requestFocus());
             dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(ignored -> {
                 String branch = results.getSelectionModel().getSelectedItem();
                 if (branch != null) {

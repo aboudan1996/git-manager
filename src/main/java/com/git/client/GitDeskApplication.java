@@ -49,6 +49,7 @@ public class GitDeskApplication extends Application {
     private boolean operationRunning;
     private boolean actionsMenuBusy;
     private String preferredRepositoryPath = "";
+    private boolean restoreSelectionPending;
     private RepositoryWorkspaceView activeWorkspace;
 
     @Override
@@ -195,6 +196,7 @@ public class GitDeskApplication extends Application {
 
     private void restoreRepositories() {
         preferredRepositoryPath = recentStore.lastRepository();
+        restoreSelectionPending = true;
         for (String path : recentStore.openRepositories()) {
             pendingRepositoryOpens.addLast(new RepositoryRequest(Path.of(path), false));
         }
@@ -321,7 +323,12 @@ public class GitDeskApplication extends Application {
         if (operationRunning) return;
         RepositoryRequest request = pendingRepositoryOpens.pollFirst();
         if (request == null) {
-            if (!preferredRepositoryPath.isBlank()) selectRepositoryTab(preferredRepositoryPath);
+            if (restoreSelectionPending) {
+                restoreSelectionPending = false;
+                if (!preferredRepositoryPath.isBlank()) {
+                    selectRepositoryTab(preferredRepositoryPath);
+                }
+            }
             return;
         }
 

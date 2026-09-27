@@ -11,8 +11,8 @@ Use the path to your own full JDK 17+ if it differs. The build also requires an 
 connection to download the official WiX Toolset 3 package from NuGet on the first run.
 The package SHA-512 is checked and its tools are extracted locally; no machine-wide WiX
 installation is needed. Use `-WiXHome` to select an existing WiX tools directory. The script creates
-`target\installer\GitDesk-1.0.1.exe` and `target\installer\GitDesk-1.0.1.msi`; override the
-version with `.\package-windows.ps1 -AppVersion 1.0.2`.
+`target\installer\GitDesk-1.0.2.exe` and `target\installer\GitDesk-1.0.2.msi`; override the
+version with `.\package-windows.ps1 -AppVersion 1.0.3`.
 
 The installer bundles the Java runtime and application dependencies, so users do not need
 to install Java separately. JGit is an automatic module, so packaging uses the classpath
