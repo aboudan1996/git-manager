@@ -4,6 +4,7 @@ module com.git.client {
     requires org.eclipse.jgit;
     requires java.prefs;
     requires java.logging;
+    requires java.net.http;
     exports com.git.client;
 
 }

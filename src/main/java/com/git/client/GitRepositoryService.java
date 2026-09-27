@@ -14,7 +14,9 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteConfig;
 import org.eclipse.jgit.transport.CredentialsProvider;
+import org.eclipse.jgit.transport.CredentialItem;
 import org.eclipse.jgit.transport.URIish;
+import org.eclipse.jgit.errors.UnsupportedCredentialItem;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 
 import java.io.IOException;
@@ -36,6 +38,7 @@ public final class GitRepositoryService implements AutoCloseable {
     private final WindowsCredentialStore credentialStore = new WindowsCredentialStore();
     private final String credentialTarget;
     private CredentialsProvider credentialsProvider;
+    private AccountCredentialsProvider accountCredentialsProvider;
     private boolean credentialsPersisted;
     private final Deque<UndoSnapshot> redoSnapshots = new ArrayDeque<>();
 
@@ -119,6 +122,7 @@ public final class GitRepositoryService implements AutoCloseable {
         if (persistCredentials) {
             credentialStore.save(credentialTarget, normalizedUsername, password);
         }
+        clearAuthenticatedAccount();
         clearHttpsCredentials();
         credentialsProvider = new UsernamePasswordCredentialsProvider(normalizedUsername,
                 password.clone());
@@ -132,6 +136,25 @@ public final class GitRepositoryService implements AutoCloseable {
         }
         credentialsProvider = null;
         credentialsPersisted = false;
+    }
+
+    public void setAuthenticatedAccount(GitAccountService.Account account) {
+        clearAuthenticatedAccount();
+        if (account == null) return;
+        char[] token = account.token();
+        try {
+            accountCredentialsProvider = new AccountCredentialsProvider(
+                    account.provider(), account.username(), token, credentialsProvider);
+        } finally {
+            java.util.Arrays.fill(token, '\0');
+        }
+    }
+
+    public void clearAuthenticatedAccount() {
+        if (accountCredentialsProvider != null) {
+            accountCredentialsProvider.clear();
+            accountCredentialsProvider = null;
+        }
     }
 
     public void addRemote(String name, String uri) throws GitAPIException {
@@ -476,8 +499,9 @@ public final class GitRepositoryService implements AutoCloseable {
 
     public String fetch() throws GitAPIException {
         var command = git.fetch();
-        if (credentialsProvider != null) {
-            command.setCredentialsProvider(credentialsProvider);
+        CredentialsProvider activeCredentials = activeCredentialsProvider();
+        if (activeCredentials != null) {
+            command.setCredentialsProvider(activeCredentials);
         }
         command.call();
         return "Fetch completed.";
@@ -492,8 +516,9 @@ public final class GitRepositoryService implements AutoCloseable {
         }
         for (String remote : remotes) {
             var command = git.fetch().setRemote(remote);
-            if (credentialsProvider != null) {
-                command.setCredentialsProvider(credentialsProvider);
+            CredentialsProvider activeCredentials = activeCredentialsProvider();
+            if (activeCredentials != null) {
+                command.setCredentialsProvider(activeCredentials);
             }
             command.call();
         }
@@ -502,8 +527,9 @@ public final class GitRepositoryService implements AutoCloseable {
 
     public String pull() throws GitAPIException {
         var command = git.pull();
-        if (credentialsProvider != null) {
-            command.setCredentialsProvider(credentialsProvider);
+        CredentialsProvider activeCredentials = activeCredentialsProvider();
+        if (activeCredentials != null) {
+            command.setCredentialsProvider(activeCredentials);
         }
         var result = command.call();
         if (result.getMergeResult() != null) {
@@ -537,8 +563,9 @@ public final class GitRepositoryService implements AutoCloseable {
         var command = git.push()
                 .setRemote(remote)
                 .setRefSpecs(new RefSpec("HEAD:" + destination));
-        if (credentialsProvider != null) {
-            command.setCredentialsProvider(credentialsProvider);
+        CredentialsProvider activeCredentials = activeCredentialsProvider();
+        if (activeCredentials != null) {
+            command.setCredentialsProvider(activeCredentials);
         }
         var results = command.call();
         List<org.eclipse.jgit.transport.RemoteRefUpdate> remoteUpdates =
@@ -596,10 +623,78 @@ public final class GitRepositoryService implements AutoCloseable {
         throw new IllegalArgumentException("Invalid branch name: " + name);
     }
 
+    private CredentialsProvider activeCredentialsProvider() {
+        return accountCredentialsProvider == null ? credentialsProvider : accountCredentialsProvider;
+    }
+
     @Override
     public void close() {
+        clearAuthenticatedAccount();
         clearHttpsCredentials();
         git.close();
+    }
+
+    private static final class AccountCredentialsProvider extends CredentialsProvider {
+        private final GitAccountService.Provider provider;
+        private final String username;
+        private final char[] token;
+        private final CredentialsProvider fallback;
+
+        private AccountCredentialsProvider(GitAccountService.Provider provider, String username,
+                                          char[] token, CredentialsProvider fallback) {
+            this.provider = provider;
+            this.username = username;
+            this.token = token.clone();
+            this.fallback = fallback;
+        }
+
+        @Override
+        public boolean isInteractive() {
+            return false;
+        }
+
+        @Override
+        public boolean supports(CredentialItem... items) {
+            boolean accountItems = true;
+            for (CredentialItem item : items) {
+                if (!(item instanceof CredentialItem.Username)
+                        && !(item instanceof CredentialItem.Password)) {
+                    accountItems = false;
+                    break;
+                }
+            }
+            return accountItems || (fallback != null && fallback.supports(items));
+        }
+
+        @Override
+        public boolean get(URIish uri, CredentialItem... items)
+                throws UnsupportedCredentialItem {
+            if (uri != null && provider.supportsHost(uri.getHost())) {
+                if (supportsAccountItems(items)) {
+                    for (CredentialItem item : items) {
+                        if (item instanceof CredentialItem.Username usernameItem) {
+                            usernameItem.setValue(username);
+                        } else if (item instanceof CredentialItem.Password passwordItem) {
+                            passwordItem.setValue(token);
+                        }
+                    }
+                    return true;
+                }
+            }
+            return fallback != null && fallback.get(uri, items);
+        }
+
+        private boolean supportsAccountItems(CredentialItem... items) {
+            for (CredentialItem item : items) {
+                if (!(item instanceof CredentialItem.Username)
+                        && !(item instanceof CredentialItem.Password)) return false;
+            }
+            return true;
+        }
+
+        private void clear() {
+            java.util.Arrays.fill(token, '\0');
+        }
     }
 
     public record RepositoryState(String branch, List<String> unstaged, List<String> staged) {

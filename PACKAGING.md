@@ -11,7 +11,7 @@ Use the path to your own full JDK 17+ if it differs. The build also requires an 
 connection to download the official WiX Toolset 3 package from NuGet on the first run.
 The package SHA-512 is checked and its tools are extracted locally; no machine-wide WiX
 installation is needed. Use `-WiXHome` to select an existing WiX tools directory. The script creates
-`target\installer\GitPilot-1.3.0.exe` and `target\installer\GitPilot-1.3.0.msi`; override the
+`target\installer\GitPilot-1.4.0.exe` and `target\installer\GitPilot-1.4.0.msi`; override the
 version with `.\package-windows.ps1 -AppVersion <version>`.
 
 The installer bundles the Java runtime and application dependencies, so users do not need
@@ -21,3 +21,10 @@ launcher rather than a trimmed `jlink` runtime image. The JavaFX window uses
 same image to a multi-resolution Windows `.ico` for the executable, installer, and shortcuts.
 At the end of installation, the installer offers to launch GitPilot; the option is enabled
 by default and can be unchecked.
+
+## Account sign-in
+
+GitPilot requires a GitHub or GitLab personal access token. The token is validated against the
+selected provider and saved in the current Windows user's Credential Manager. GitPilot uses it
+for HTTPS operations only with the matching provider; use **Sign out** in the account menu to
+remove the saved application session.

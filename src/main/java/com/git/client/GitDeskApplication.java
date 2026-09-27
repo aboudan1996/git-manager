@@ -4,13 +4,17 @@ import javafx.application.Application;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
+import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tab;
@@ -19,12 +23,15 @@ import javafx.scene.image.Image;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.shape.Rectangle;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
+import javafx.util.StringConverter;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Repository;
 
@@ -42,9 +49,11 @@ public class GitDeskApplication extends Application {
     private final LogService logService = new LogService();
     private final RecentRepositoryStore recentStore = new RecentRepositoryStore();
     private final RepositoryTabManager repositoryTabs = new RepositoryTabManager();
+    private final GitAccountService accountService = new GitAccountService();
     private final MenuButton repositoryLabel = new MenuButton("No repository open");
     private final Label branchLabel = new Label("No branch");
     private final MenuButton actionsButton = new MenuButton("Git actions");
+    private final MenuButton accountButton = new MenuButton("Account");
     private final ProgressIndicator operationSpinner = new ProgressIndicator();
     private final Deque<RepositoryRequest> pendingRepositoryOpens = new ArrayDeque<>();
     private final List<Button> quickActionButtons = new ArrayList<>();
@@ -60,6 +69,17 @@ public class GitDeskApplication extends Application {
     private String preferredRepositoryPath = "";
     private boolean restoreSelectionPending;
     private RepositoryWorkspaceView activeWorkspace;
+    private GitAccountService.Account authenticatedAccount;
+    private BorderPane root;
+    private Node workspaceNode;
+    private HBox toolbar;
+    private Node loginView;
+    private ComboBox<GitAccountService.Provider> loginProvider;
+    private PasswordField loginToken;
+    private Button loginButton;
+    private Label loginStatus;
+    private ProgressIndicator loginSpinner;
+    private boolean repositoriesRestored;
 
     @Override
     public void start(Stage stage) {
@@ -75,10 +95,12 @@ public class GitDeskApplication extends Application {
             if (repositoryTabs.tabs().isEmpty()) recentStore.clearLastRepository();
             updateControls();
         });
-        BorderPane root = new BorderPane();
+        root = new BorderPane();
         root.getStyleClass().add("app-root");
-        root.setTop(createToolbar());
-        root.setCenter(workspace().create());
+        toolbar = createToolbar();
+        workspaceNode = workspace().create();
+        loginView = createLoginView();
+        root.setCenter(loginView);
         var screenBounds = Screen.getPrimary().getVisualBounds();
         double initialWidth = Math.min(1440, screenBounds.getWidth() * 0.95);
         double initialHeight = screenBounds.getHeight() * 0.94;
@@ -97,10 +119,222 @@ public class GitDeskApplication extends Application {
         workspace().setRepositoryAvailable(repositoryService != null);
         refreshRecentRepositoryList();
         configureActionsMenu();
-        restoreRepositories();
+        restoreAuthentication();
     }
 
     private RepositoryWorkspaceView workspace() { return activeWorkspace; }
+
+    private Node createLoginView() {
+        Label brandMark = new Label("GP");
+        brandMark.getStyleClass().add("login-brand-mark");
+        Label brandName = new Label("GITPILOT");
+        brandName.getStyleClass().add("login-brand-name");
+        HBox brand = new HBox(10, brandMark, brandName);
+        brand.setAlignment(Pos.CENTER_LEFT);
+
+        Label heading = new Label("Welcome to GitPilot");
+        heading.getStyleClass().add("login-heading");
+        Label description = new Label(
+                "Use a personal access token with profile-read permission. Private repositories "
+                        + "also require repository access.");
+        description.getStyleClass().add("login-description");
+        description.setWrapText(true);
+
+        loginProvider = new ComboBox<>();
+        loginProvider.getItems().setAll(GitAccountService.Provider.values());
+        loginProvider.setValue(GitAccountService.Provider.GITHUB);
+        loginProvider.setConverter(new StringConverter<>() {
+            @Override public String toString(GitAccountService.Provider provider) {
+                return provider == null ? "" : provider.displayName();
+            }
+            @Override public GitAccountService.Provider fromString(String value) {
+                return null;
+            }
+        });
+        loginProvider.getStyleClass().add("login-input");
+        loginProvider.setMaxWidth(Double.MAX_VALUE);
+
+        Label providerLabel = new Label("Git provider");
+        providerLabel.getStyleClass().add("login-field-label");
+        loginToken = new PasswordField();
+        loginToken.setPromptText("Paste your personal access token");
+        loginToken.getStyleClass().add("login-input");
+        Label tokenLabel = new Label("Personal access token");
+        tokenLabel.getStyleClass().add("login-field-label");
+
+        Hyperlink tokenHelp = new Hyperlink("Create a token");
+        tokenHelp.getStyleClass().add("login-link");
+        tokenHelp.setOnAction(event -> {
+            GitAccountService.Provider selected = loginProvider.getValue();
+            String url = selected == GitAccountService.Provider.GITLAB
+                    ? "https://gitlab.com/-/user_settings/personal_access_tokens"
+                    : "https://github.com/settings/personal-access-tokens";
+            getHostServices().showDocument(url);
+        });
+        loginStatus = new Label("Your token is validated with the selected provider.");
+        loginStatus.getStyleClass().add("login-status");
+        loginStatus.setWrapText(true);
+        loginSpinner = new ProgressIndicator();
+        loginSpinner.setPrefSize(20, 20);
+        loginSpinner.setMaxSize(20, 20);
+        loginSpinner.setVisible(false);
+        loginSpinner.setManaged(false);
+        loginButton = new Button("Sign in securely");
+        loginButton.getStyleClass().add("login-submit");
+        loginButton.setMaxWidth(Double.MAX_VALUE);
+        loginButton.setOnAction(event -> submitLogin());
+        loginToken.setOnAction(event -> submitLogin());
+        loginToken.textProperty().addListener((observable, old, value) ->
+                loginButton.setDisable(value == null || value.isBlank()));
+        loginButton.setDisable(true);
+
+        HBox statusRow = new HBox(9, loginSpinner, loginStatus);
+        statusRow.setAlignment(Pos.CENTER_LEFT);
+        VBox fields = new VBox(9, providerLabel, loginProvider, tokenLabel, loginToken);
+        VBox.setMargin(tokenHelp, new Insets(0, 0, 3, 0));
+        VBox card = new VBox(18, brand, heading, description, fields, tokenHelp,
+                statusRow, loginButton);
+        card.getStyleClass().add("login-card");
+        card.setMaxWidth(440);
+        StackPane page = new StackPane(card);
+        page.getStyleClass().add("login-page");
+        return page;
+    }
+
+    private void restoreAuthentication() {
+        showLogin("Checking for a saved GitHub or GitLab session...");
+        loginSpinner.setVisible(true);
+        loginSpinner.setManaged(true);
+        loginButton.setDisable(true);
+        Task<GitAccountService.Account> task = new Task<>() {
+            @Override protected GitAccountService.Account call() throws Exception {
+                GitAccountService.Account saved = accountService.loadStoredAccount();
+                if (saved == null) return null;
+                try {
+                    return accountService.verifyStored(saved);
+                } catch (GitAccountService.InvalidTokenException invalidToken) {
+                    accountService.signOut();
+                    return null;
+                } finally {
+                    saved.close();
+                }
+            }
+        };
+        task.setOnSucceeded(event -> {
+            if (task.getValue() == null) {
+                showLogin("Sign in with GitHub or GitLab to continue.");
+            } else {
+                activateAuthenticatedAccount(task.getValue());
+            }
+        });
+        task.setOnFailed(event ->
+                showLogin("Could not verify the saved session: " + errorMessage(task.getException())));
+        Thread worker = new Thread(task, "git-account-restore");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void submitLogin() {
+        if (loginButton.isDisabled() || loginProvider.getValue() == null) return;
+        GitAccountService.Provider provider = loginProvider.getValue();
+        char[] token = loginToken.getText().toCharArray();
+        loginToken.clear();
+        loginButton.setDisable(true);
+        loginSpinner.setVisible(true);
+        loginSpinner.setManaged(true);
+        loginStatus.getStyleClass().setAll("login-status");
+        loginStatus.setText("Verifying your account...");
+        Task<GitAccountService.Account> task = new Task<>() {
+            @Override protected GitAccountService.Account call() throws Exception {
+                try {
+                    return accountService.signIn(provider, token);
+                } finally {
+                    java.util.Arrays.fill(token, '\0');
+                }
+            }
+        };
+        task.setOnSucceeded(event -> activateAuthenticatedAccount(task.getValue()));
+        task.setOnFailed(event -> {
+            loginSpinner.setVisible(false);
+            loginSpinner.setManaged(false);
+            loginStatus.getStyleClass().setAll("login-status", "login-status-error");
+            loginStatus.setText(errorMessage(task.getException()));
+            loginButton.setDisable(loginToken.getText().isBlank());
+        });
+        Thread worker = new Thread(task, "git-account-login");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void activateAuthenticatedAccount(GitAccountService.Account account) {
+        GitAccountService.Account previous = authenticatedAccount;
+        authenticatedAccount = account;
+        repositoryTabs.repositories().forEach(service ->
+                service.setAuthenticatedAccount(authenticatedAccount));
+        if (previous != null) previous.close();
+        accountButton.setText("@" + account.username());
+        String sessionStorage = accountService.supportsPersistence()
+                ? "Saved securely on this Windows account."
+                : "Available for this session only.";
+        accountButton.setTooltip(new Tooltip("Signed in to " + account.provider().displayName()
+                + " as " + account.username() + ". " + sessionStorage));
+        accountButton.setVisible(true);
+        accountButton.setManaged(true);
+        loginSpinner.setVisible(false);
+        loginSpinner.setManaged(false);
+        root.setTop(toolbar);
+        root.setCenter(workspaceNode);
+        workspace().setRepositoryAvailable(repositoryService != null);
+        refreshRecentRepositoryList();
+        configureActionsMenu();
+        if (!repositoriesRestored) {
+            repositoriesRestored = true;
+            restoreRepositories();
+        } else if (repositoryTabs.selected() != null) {
+            refreshRepository();
+        }
+        updateControls();
+    }
+
+    private void showLogin(String message) {
+        root.setTop(null);
+        root.setCenter(loginView);
+        loginSpinner.setVisible(false);
+        loginSpinner.setManaged(false);
+        loginStatus.getStyleClass().setAll("login-status");
+        loginStatus.setText(message);
+        loginButton.setDisable(loginToken.getText().isBlank());
+    }
+
+    private void signOut() {
+        if (operationRunning || authenticatedAccount == null) return;
+        operationRunning = true;
+        updateControls();
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                accountService.signOut();
+                return null;
+            }
+        };
+        task.setOnSucceeded(event -> {
+            operationRunning = false;
+            repositoryTabs.repositories().forEach(GitRepositoryService::clearAuthenticatedAccount);
+            authenticatedAccount.close();
+            authenticatedAccount = null;
+            accountButton.setVisible(false);
+            accountButton.setManaged(false);
+            showLogin("You have signed out. Sign in again to continue.");
+            updateControls();
+        });
+        task.setOnFailed(event -> {
+            operationRunning = false;
+            updateControls();
+            showError("Could not sign out", task.getException());
+        });
+        Thread worker = new Thread(task, "git-account-sign-out");
+        worker.setDaemon(true);
+        worker.start();
+    }
 
     private RepositoryWorkspaceView.Actions workspaceActions() {
         return new RepositoryWorkspaceView.Actions() {
@@ -213,8 +447,14 @@ public class GitDeskApplication extends Application {
         openRepositoryButton = new Button("Open repository");
         openRepositoryButton.getStyleClass().add("secondary-button");
         openRepositoryButton.setOnAction(event -> chooseRepository());
-        Button addRepositoryButton = new Button("+");
-        addRepositoryButton.getStyleClass().add("add-repository-button");
+        StackPane addIcon = new StackPane(
+                new Rectangle(14, 2.4),
+                new Rectangle(2.4, 14));
+        addIcon.getStyleClass().add("add-repository-icon");
+        Button addRepositoryButton = new Button();
+        addRepositoryButton.setGraphic(addIcon);
+        addRepositoryButton.setAccessibleText("Open another repository");
+        addRepositoryButton.getStyleClass().addAll("quick-action-button", "add-repository-button");
         addRepositoryButton.setPrefHeight(34);
         addRepositoryButton.setMinHeight(34);
         addRepositoryButton.setMaxHeight(34);
@@ -228,6 +468,13 @@ public class GitDeskApplication extends Application {
         refreshButton.setOnAction(event -> refreshRepository());
         MenuButton menu = actionsButton;
         menu.getStyleClass().add("secondary-button");
+        accountButton.getStyleClass().add("secondary-button");
+        accountButton.setTooltip(new Tooltip("Authenticated Git provider account"));
+        accountButton.setVisible(false);
+        accountButton.setManaged(false);
+        MenuItem signOut = new MenuItem("Sign out");
+        signOut.setOnAction(event -> signOut());
+        accountButton.getItems().setAll(signOut);
         quickActionButtons.clear();
         HBox quickActions = new HBox(3,
                 createQuickAction("↶", "Undo", "Save and clear uncommitted changes",
@@ -260,7 +507,7 @@ public class GitDeskApplication extends Application {
         HBox heading = new HBox(6, repositoryLabel, addRepositoryButton);
         heading.setAlignment(Pos.CENTER_LEFT);
         HBox toolbar = new HBox(10, appName, heading, quickActions, spacer,
-                operationSpinner, branchLabel, menu,
+                operationSpinner, branchLabel, menu, accountButton,
                 cloneRepositoryButton, openRepositoryButton, refreshButton);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.setPadding(new Insets(16, 22, 16, 22));
@@ -438,7 +685,11 @@ public class GitDeskApplication extends Application {
         Task<GitRepositoryService> task = new Task<>() {
             @Override
             protected GitRepositoryService call() throws Exception {
-                return GitRepositoryService.open(request.directory());
+                GitRepositoryService service = GitRepositoryService.open(request.directory());
+                if (authenticatedAccount != null) {
+                    service.setAuthenticatedAccount(authenticatedAccount);
+                }
+                return service;
             }
         };
         task.setOnSucceeded(event -> {
@@ -571,7 +822,12 @@ public class GitDeskApplication extends Application {
         Task<GitRepositoryService> task = new Task<>() {
             @Override protected GitRepositoryService call() throws Exception {
                 try {
-                    return GitRepositoryService.cloneRepository(url, destination, username, secret);
+                    GitRepositoryService service =
+                            GitRepositoryService.cloneRepository(url, destination, username, secret);
+                    if (authenticatedAccount != null) {
+                        service.setAuthenticatedAccount(authenticatedAccount);
+                    }
+                    return service;
                 } finally {
                     java.util.Arrays.fill(secret, '\0');
                 }
@@ -702,6 +958,7 @@ public class GitDeskApplication extends Application {
         refreshButton.setDisable(!hasRepository || operationRunning);
         branchLabel.setDisable(!hasRepository || operationRunning);
         quickActionButtons.forEach(button -> button.setDisable(!hasRepository || operationRunning));
+        accountButton.setDisable(operationRunning);
         repositoryTabs.setDisabled(operationRunning);
         workspace().setCommitEnabled(hasRepository && !operationRunning);
     }
@@ -741,6 +998,8 @@ public class GitDeskApplication extends Application {
     public void stop() {
         persistOpenRepositories();
         repositoryTabs.closeAll();
+        if (authenticatedAccount != null) authenticatedAccount.close();
+        if (loginToken != null) loginToken.clear();
         logService.info("GitPilot application stopped.");
         logService.close();
     }

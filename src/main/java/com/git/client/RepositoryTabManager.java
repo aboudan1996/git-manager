@@ -27,6 +27,7 @@ final class RepositoryTabManager {
     Tab selected() { return tabs.getSelectionModel().getSelectedItem(); }
     String path(Tab tab) { return tab == null ? null : (String) tab.getProperties().get("repository-path"); }
     GitRepositoryService repository(String path) { return repositories.get(path); }
+    List<GitRepositoryService> repositories() { return List.copyOf(repositories.values()); }
     boolean contains(String path) { return repositories.containsKey(path); }
 
     void onSelection(Consumer<Tab> listener) { selectionListener = listener; }

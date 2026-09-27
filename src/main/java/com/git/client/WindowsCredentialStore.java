@@ -12,7 +12,7 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.List;
 
-/** Stores repository HTTPS credentials in the current Windows user's Credential Manager. */
+/** Stores Git credentials in the current Windows user's Credential Manager. */
 final class WindowsCredentialStore {
     private static final String POWERSHELL_SCRIPT = """
             $ErrorActionPreference = 'Stop'

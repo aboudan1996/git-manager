@@ -55,21 +55,19 @@
 }
 
 .add-repository-button {
-    -fx-min-width: 34px;
-    -fx-pref-width: 34px;
-    -fx-max-width: 34px;
-    -fx-min-height: 34px;
-    -fx-padding: 0;
-    -fx-background-color: #292d36;
-    -fx-text-fill: #f2f5fa;
-    -fx-font-size: 19px;
-    -fx-font-weight: bold;
-    -fx-background-radius: 5px;
+    -fx-min-width: 42px;
+    -fx-pref-width: 46px;
+    -fx-max-width: 46px;
+    -fx-min-height: 42px;
+    -fx-padding: 4px 5px;
 }
 
-.add-repository-button:hover {
-    -fx-background-color: #3478f6;
-    -fx-text-fill: white;
+.add-repository-icon > .rectangle {
+    -fx-fill: #edf3fc;
+}
+
+.add-repository-button:hover .add-repository-icon > .rectangle {
+    -fx-fill: white;
 }
 
 .branch-badge {
@@ -381,16 +379,16 @@
 }
 
 .quick-action-icon {
-    -fx-text-fill: #c1ccdc;
+    -fx-text-fill: #e3ebf8;
     -fx-font-family: "Segoe UI Symbol", "Segoe UI";
-    -fx-font-size: 15px;
-    -fx-font-weight: normal;
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
 }
 
 .quick-action-title {
-    -fx-text-fill: #aab4c4;
-    -fx-font-size: 9px;
-    -fx-font-weight: normal;
+    -fx-text-fill: #cbd5e4;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
 }
 
 .quick-action-button:hover .quick-action-icon,
@@ -400,6 +398,113 @@
 
 .quick-action-button:disabled {
     -fx-opacity: 0.38;
+}
+
+.login-page {
+    -fx-background-color: linear-gradient(to bottom right, #111722, #101319 60%, #151b26);
+    -fx-padding: 32px;
+}
+
+.login-card {
+    -fx-background-color: #191f2a;
+    -fx-background-radius: 14px;
+    -fx-border-color: #303a49;
+    -fx-border-radius: 14px;
+    -fx-padding: 34px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.38), 28, 0.16, 0, 10);
+}
+
+.login-brand-mark {
+    -fx-alignment: center;
+    -fx-min-width: 42px;
+    -fx-min-height: 42px;
+    -fx-background-color: linear-gradient(to bottom right, #5b91ff, #3468d7);
+    -fx-background-radius: 11px;
+    -fx-text-fill: white;
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+}
+
+.login-brand-name {
+    -fx-text-fill: #cbd5e4;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.login-heading {
+    -fx-text-fill: #f2f5fa;
+    -fx-font-size: 25px;
+    -fx-font-weight: bold;
+}
+
+.login-description {
+    -fx-text-fill: #aab5c5;
+    -fx-font-size: 13px;
+    -fx-line-spacing: 3px;
+}
+
+.login-field-label {
+    -fx-text-fill: #d7deea;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.login-input {
+    -fx-background-color: #111620;
+    -fx-control-inner-background: #111620;
+    -fx-text-fill: #edf2f8;
+    -fx-prompt-text-fill: #798597;
+    -fx-border-color: #343e4e;
+    -fx-border-radius: 7px;
+    -fx-background-radius: 7px;
+    -fx-padding: 10px 12px;
+}
+
+.login-input:focused {
+    -fx-border-color: #668df2;
+}
+
+.login-input .list-cell {
+    -fx-background-color: #111620;
+    -fx-text-fill: #edf2f8;
+}
+
+.login-link {
+    -fx-border-color: transparent;
+    -fx-padding: 0;
+    -fx-text-fill: #8cb2ff;
+    -fx-underline: false;
+}
+
+.login-link:hover {
+    -fx-text-fill: #b1cbff;
+    -fx-underline: true;
+}
+
+.login-status {
+    -fx-text-fill: #9ba8ba;
+    -fx-font-size: 11px;
+}
+
+.login-status-error {
+    -fx-text-fill: #f08b94;
+}
+
+.login-submit {
+    -fx-background-color: #3979f6;
+    -fx-background-radius: 7px;
+    -fx-padding: 11px 16px;
+    -fx-text-fill: white;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.login-submit:hover {
+    -fx-background-color: #5189fb;
+}
+
+.login-submit:disabled {
+    -fx-opacity: 0.55;
 }
 
 .search-field,
