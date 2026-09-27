@@ -8,10 +8,12 @@ import javafx.scene.input.MouseEvent;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Tab;
@@ -50,6 +52,7 @@ final class RepositoryWorkspaceView {
         void commitFileSelected(GitRepositoryService.CommitEntry commit, String path);
         void stashSelected(GitRepositoryService.StashEntry stash);
         void stashFileSelected(GitRepositoryService.StashEntry stash, String path);
+        void applyStash(GitRepositoryService.StashEntry stash, boolean dropAfterApply);
     }
 
     private static final DateTimeFormatter COMMIT_DATE =
@@ -254,13 +257,33 @@ final class RepositoryWorkspaceView {
         stashSearch.getStyleClass().add("search-field");
         stashSearch.textProperty().addListener((o, old, query) -> filterStashes(query));
         stashes.setCellFactory(list -> new ListCell<>() {
+            private final MenuItem applyStash = new MenuItem("Apply selected stash");
+            private final MenuItem popStash = new MenuItem("Pop selected stash");
+            private final ContextMenu stashMenu = new ContextMenu(applyStash, popStash);
+
+            {
+                applyStash.setOnAction(event -> {
+                    if (getItem() != null) actions.applyStash(getItem(), false);
+                });
+                popStash.setOnAction(event -> {
+                    if (getItem() != null) actions.applyStash(getItem(), true);
+                });
+                setOnContextMenuRequested(event -> {
+                    if (!isEmpty() && getItem() != null) {
+                        list.getSelectionModel().select(getItem());
+                    }
+                });
+            }
+
             @Override protected void updateItem(GitRepositoryService.StashEntry stash, boolean empty) {
                 super.updateItem(stash, empty);
                 if (empty || stash == null) {
                     setText(null);
                     setGraphic(null);
+                    setContextMenu(null);
                     return;
                 }
+                setContextMenu(stashMenu);
                 Label summary = new Label(stash.message());
                 summary.getStyleClass().add("commit-summary");
                 summary.setWrapText(true);
@@ -277,7 +300,8 @@ final class RepositoryWorkspaceView {
         });
         stashes.setOnMouseClicked(event -> {
             GitRepositoryService.StashEntry clickedStash = stashCellAt(event);
-            if (pressedStashWasSelected && pressedStash != null
+            if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY
+                    && pressedStashWasSelected && pressedStash != null
                     && pressedStash.equals(clickedStash)) {
                 stashes.getSelectionModel().clearSelection();
             }

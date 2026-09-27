@@ -55,12 +55,15 @@
 }
 
 .add-repository-button {
-    -fx-min-width: 25px;
-    -fx-min-height: 25px;
+    -fx-min-width: 34px;
+    -fx-pref-width: 34px;
+    -fx-max-width: 34px;
+    -fx-min-height: 34px;
     -fx-padding: 0;
     -fx-background-color: #292d36;
-    -fx-text-fill: #d8dbe2;
-    -fx-font-size: 17px;
+    -fx-text-fill: #f2f5fa;
+    -fx-font-size: 19px;
+    -fx-font-weight: bold;
     -fx-background-radius: 5px;
 }
 
@@ -307,6 +310,43 @@
 
 .button:disabled {
     -fx-opacity: 0.45;
+}
+
+.context-menu {
+    -fx-background-color: #1a1f29;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8px;
+    -fx-border-color: #343c49;
+    -fx-border-radius: 8px;
+    -fx-padding: 6px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.42), 16, 0.18, 0, 5);
+}
+
+.menu-item {
+    -fx-background-color: transparent;
+    -fx-background-radius: 5px;
+    -fx-padding: 8px 12px;
+}
+
+.menu-item .label {
+    -fx-text-fill: #d8dee9;
+}
+
+.menu-item:focused {
+    -fx-background-color: #2a3850;
+}
+
+.menu-item:focused .label {
+    -fx-text-fill: #f4f6fa;
+}
+
+.menu-item:disabled .label {
+    -fx-text-fill: #7f8998;
+}
+
+.separator-menu-item .line {
+    -fx-border-color: #343b47;
+    -fx-border-width: 1 0 0 0;
 }
 
 #commitButton {

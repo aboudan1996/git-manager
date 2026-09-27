@@ -143,6 +143,13 @@ public class GitDeskApplication extends Application {
             @Override public void stashFileSelected(GitRepositoryService.StashEntry stash, String path) {
                 showStashFileDiff(stash, path);
             }
+            @Override public void applyStash(GitRepositoryService.StashEntry stash,
+                                             boolean dropAfterApply) {
+                if (stash == null) return;
+                String operation = dropAfterApply ? "Pop selected stash" : "Apply selected stash";
+                runRemoteAction(operation,
+                        () -> repositoryService.applyStash(stash.objectId(), dropAfterApply));
+            }
         };
     }
 
@@ -207,7 +214,7 @@ public class GitDeskApplication extends Application {
         openRepositoryButton.getStyleClass().add("secondary-button");
         openRepositoryButton.setOnAction(event -> chooseRepository());
         Button addRepositoryButton = new Button("+");
-        addRepositoryButton.getStyleClass().add("repository-switcher");
+        addRepositoryButton.getStyleClass().add("add-repository-button");
         addRepositoryButton.setPrefHeight(34);
         addRepositoryButton.setMinHeight(34);
         addRepositoryButton.setMaxHeight(34);

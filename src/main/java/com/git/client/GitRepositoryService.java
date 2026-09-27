@@ -447,11 +447,31 @@ public final class GitRepositoryService implements AutoCloseable {
         if (stashes.isEmpty()) {
             throw new IllegalArgumentException("There are no stashed changes.");
         }
-        var result = git.stashApply().setStashRef(stashes.get(0).getName()).call();
-        if (dropAfterApply) {
-            git.stashDrop().setStashRef(0).call();
+        return applyStash(stashes.get(0).getName(), dropAfterApply);
+    }
+
+    public String applyStash(String stashId, boolean dropAfterApply) throws GitAPIException {
+        if (stashId == null || stashId.isBlank()) {
+            throw new IllegalArgumentException("Select a stash to apply.");
         }
-        return "Applied latest stash" + (result == null ? "" : ".");
+        List<RevCommit> stashes = git.stashList().call().stream().toList();
+        int stashIndex = -1;
+        for (int index = 0; index < stashes.size(); index++) {
+            if (stashes.get(index).getName().equals(stashId)
+                    || ("stash@{" + index + "}").equals(stashId)) {
+                stashIndex = index;
+                break;
+            }
+        }
+        if (stashIndex < 0) {
+            throw new IllegalArgumentException("The selected stash is no longer available.");
+        }
+        var result = git.stashApply().setStashRef(stashes.get(stashIndex).getName()).call();
+        if (dropAfterApply) {
+            git.stashDrop().setStashRef(stashIndex).call();
+        }
+        return (dropAfterApply ? "Popped " : "Applied ")
+                + "stash@{" + stashIndex + "}" + (result == null ? "" : ".");
     }
 
     public String fetch() throws GitAPIException {

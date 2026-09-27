@@ -224,6 +224,42 @@ class GitRepositoryServiceTest {
     }
 
     @Test
+    void appliesAndPopsTheSelectedStashWithoutDroppingTheNewestOne() throws Exception {
+        Path file = directory.resolve("selected-stash.txt");
+        Files.writeString(file, "base\n");
+        try (Git git = Git.open(directory.toFile())) {
+            git.add().addFilepattern("selected-stash.txt").call();
+            git.commit().setMessage("Base").call();
+        }
+
+        try (GitRepositoryService service = GitRepositoryService.open(directory)) {
+            Files.writeString(file, "older stash\n");
+            service.stash();
+            Files.writeString(file, "newer stash\n");
+            service.stash();
+
+            List<GitRepositoryService.StashEntry> stashes = service.getStashes();
+            assertEquals(2, stashes.size());
+            assertTrue(service.applyStash(stashes.get(1).objectId(), false).contains("Applied"));
+            assertEquals("older stash\n", Files.readString(file).replace("\r\n", "\n"));
+            assertEquals(2, service.getStashes().size());
+
+            Files.writeString(file, "base\n");
+            Files.writeString(file, "selected for pop\n");
+            service.stash();
+            Files.writeString(file, "stash to keep\n");
+            service.stash();
+            List<GitRepositoryService.StashEntry> popStashes = service.getStashes();
+            GitRepositoryService.StashEntry selectedForPop = popStashes.get(1);
+            String remainingStashId = popStashes.get(0).objectId();
+            assertTrue(service.applyStash(selectedForPop.objectId(), true).contains("Popped"));
+            assertEquals("selected for pop\n", Files.readString(file).replace("\r\n", "\n"));
+            assertEquals(3, service.getStashes().size());
+            assertEquals(remainingStashId, service.getStashes().get(0).objectId());
+        }
+    }
+
+    @Test
     void listsAndShowsTrackedAndUntrackedFilesInStashes() throws Exception {
         Path tracked = directory.resolve("work.txt");
         Files.writeString(tracked, "base\n");
