@@ -749,13 +749,38 @@ public class GitDeskApplication extends Application {
         try {
             action.run();
             refreshRepository();
-            setStatusText(operation + " completed successfully.");
-            logService.info(operation + " completed successfully.");
+            boolean inspectConflicts = isConflictOperation(operation)
+                    || "Resolve conflict".equals(operation);
+            if (!inspectConflicts) {
+                setStatusText(operation + " completed successfully.");
+                logService.info(operation + " completed successfully.");
+                return;
+            }
+            List<String> conflicts = repositoryService.getConflictPaths();
+            if (conflicts.isEmpty()) {
+                setStatusText(operation + " completed successfully.");
+            } else {
+                if (isConflictOperation(operation)) {
+                    setStatusText(operation + " paused for conflict resolution.");
+                }
+                openConflictEditor(conflicts.get(0));
+            }
+            if (conflicts.isEmpty()) {
+                logService.info(operation + " completed successfully.");
+            } else {
+                logService.warning(operation + " left " + conflicts.size()
+                        + " file(s) to resolve.");
+            }
         } catch (IOException | GitAPIException | IllegalArgumentException exception) {
             logService.error(operation + " failed.", exception);
             setStatusText(operation + " failed: " + errorMessage(exception));
             showError("Git operation failed", exception);
         }
+    }
+
+    private boolean isConflictOperation(String operation) {
+        return operation.equalsIgnoreCase("Rebase onto")
+                || operation.equalsIgnoreCase("Merge branch");
     }
 
     private void runRemoteAction(String operation, GitActionsMenu.RemoteAction action) {
