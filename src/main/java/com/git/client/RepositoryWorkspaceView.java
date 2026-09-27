@@ -19,8 +19,6 @@ import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextArea;
-import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -519,40 +517,92 @@ final class RepositoryWorkspaceView {
     }
 
     void showConflictEditor(String path, GitRepositoryService.ConflictContents conflict) {
-        TextArea base = conflictText("Base version", conflict.base());
-        TextArea ours = conflictText("Current branch (ours)", conflict.ours());
-        TextArea theirs = conflictText("Incoming branch (theirs)", conflict.theirs());
-        TextArea resolution = conflictText("Resolved result (editable)", conflict.working());
+        ConflictResolutionDocument document = ConflictResolutionDocument.parse(conflict);
+        VBox hunks = new VBox(12);
+        hunks.getStyleClass().add("conflict-hunks");
+        TextArea resolution = conflictText("Choose a version for each conflict block...",
+                conflict.working());
         resolution.setEditable(true);
         resolution.getStyleClass().add("resolution-editor");
-        GridPane versions = new GridPane();
-        versions.setHgap(10); versions.setVgap(10);
-        versions.addRow(0, sectionTitle("Base"), sectionTitle("Ours"));
-        versions.addRow(1, base, ours);
-        versions.addRow(2, sectionTitle("Theirs"), sectionTitle("Resolve"));
-        versions.addRow(3, theirs, resolution);
-        for (int column = 0; column < 2; column++) {
-            ColumnConstraints constraints = new ColumnConstraints();
-            constraints.setPercentWidth(50); constraints.setHgrow(Priority.ALWAYS);
-            versions.getColumnConstraints().add(constraints);
-        }
-        for (TextArea area : List.of(base, ours, theirs, resolution)) {
-            GridPane.setHgrow(area, Priority.ALWAYS);
-            GridPane.setVgrow(area, Priority.ALWAYS);
-        }
-        ScrollPane scroll = new ScrollPane(versions);
-        scroll.setFitToWidth(true);
         Dialog<ButtonType> dialog = new Dialog<>();
         dialog.initOwner(owner);
         DialogStyler.apply(dialog);
         dialog.setTitle("Resolve conflict");
-        dialog.setHeaderText(path + " — edit the result, then mark it resolved");
-        dialog.getDialogPane().setContent(scroll);
-        dialog.getDialogPane().getButtonTypes().addAll(
-                new ButtonType("Mark resolved", ButtonBar.ButtonData.OK_DONE), ButtonType.CANCEL);
-        dialog.getDialogPane().setPrefSize(900, 650);
+        dialog.setHeaderText(path + " — select changes for each conflict");
+        ButtonType resolveType = new ButtonType("Mark resolved", ButtonBar.ButtonData.OK_DONE);
+        Runnable updateResolution = () -> {
+            boolean allSelected = document.hasSelections();
+            resolution.setText(allSelected ? document.compose() : conflict.working());
+            dialog.getDialogPane().lookupButton(resolveType).setDisable(!allSelected);
+        };
+        for (int index = 0; index < document.hunks().size(); index++) {
+            int hunkIndex = index;
+            ConflictResolutionDocument.Hunk hunk = document.hunks().get(index);
+            VBox currentSide = conflictSide("Current branch", hunk.current(), "diff-removed");
+            VBox incomingSide = conflictSide("Incoming branch", hunk.incoming(), "diff-added");
+            HBox versions = new HBox(10, currentSide, incomingSide);
+            HBox.setHgrow(currentSide, Priority.ALWAYS);
+            HBox.setHgrow(incomingSide, Priority.ALWAYS);
+            Button useCurrent = new Button("Use current");
+            Button useIncoming = new Button("Use incoming");
+            Button useBoth = new Button("Use both");
+            useCurrent.getStyleClass().add("secondary-button");
+            useIncoming.getStyleClass().add("secondary-button");
+            useBoth.getStyleClass().add("secondary-button");
+            useCurrent.setOnAction(event -> {
+                document.select(hunkIndex, ConflictResolutionDocument.Choice.CURRENT);
+                updateResolution.run();
+            });
+            useIncoming.setOnAction(event -> {
+                document.select(hunkIndex, ConflictResolutionDocument.Choice.INCOMING);
+                updateResolution.run();
+            });
+            useBoth.setOnAction(event -> {
+                document.select(hunkIndex, ConflictResolutionDocument.Choice.BOTH);
+                updateResolution.run();
+            });
+            HBox choices = new HBox(8, useCurrent, useIncoming, useBoth);
+            choices.setAlignment(Pos.CENTER_RIGHT);
+            VBox card = new VBox(10, sectionTitle("Conflict " + (index + 1)),
+                    versions, choices);
+            card.getStyleClass().add("conflict-hunk");
+            hunks.getChildren().add(card);
+        }
+        ScrollPane hunkScroll = new ScrollPane(hunks);
+        hunkScroll.setFitToWidth(true);
+        hunkScroll.getStyleClass().add("diff-scroll");
+        VBox resultPane = new VBox(8, sectionTitle("Resolved result (editable)"), resolution);
+        resultPane.getStyleClass().add("conflict-result-pane");
+        VBox content = new VBox(12, sectionTitle("Choose which side to keep for each conflict"),
+                hunkScroll, resultPane);
+        VBox.setVgrow(hunkScroll, Priority.ALWAYS);
+        VBox.setVgrow(resolution, Priority.ALWAYS);
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().getButtonTypes().addAll(resolveType, ButtonType.CANCEL);
+        dialog.getDialogPane().setPrefSize(1080, 760);
+        dialog.getDialogPane().lookupButton(resolveType).setDisable(true);
         dialog.showAndWait().filter(button -> button.getButtonData() == ButtonBar.ButtonData.OK_DONE)
                 .ifPresent(button -> actions.resolveConflict(path, resolution.getText()));
+    }
+
+    private VBox conflictSide(String title, String contents, String lineStyle) {
+        VBox lines = new VBox();
+        lines.getStyleClass().add("diff-lines");
+        String[] contentLines = (contents == null ? "" : contents).split("\\R", -1);
+        for (int index = 0; index < contentLines.length; index++) {
+            if (index == contentLines.length - 1 && contentLines[index].isEmpty()) continue;
+            lines.getChildren().add(diffLine(contentLines[index], lineStyle));
+        }
+        if (lines.getChildren().isEmpty()) {
+            lines.getChildren().add(diffLine("(empty)", "diff-context"));
+        }
+        ScrollPane scroll = new ScrollPane(lines);
+        scroll.setFitToWidth(true);
+        scroll.getStyleClass().add("diff-scroll");
+        VBox side = new VBox(6, sectionTitle(title), scroll);
+        side.getStyleClass().add("conflict-side");
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+        return side;
     }
 
     private void filterHistory(String query) {

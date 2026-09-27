@@ -259,6 +259,34 @@
     -fx-border-color: #3478f6;
 }
 
+.conflict-hunks {
+    -fx-padding: 10px;
+    -fx-background-color: #111318;
+}
+
+.conflict-hunk,
+.conflict-side,
+.conflict-result-pane {
+    -fx-padding: 12px;
+    -fx-background-color: #171b23;
+    -fx-background-radius: 7px;
+    -fx-border-color: #2a303b;
+    -fx-border-radius: 7px;
+}
+
+.conflict-side {
+    -fx-background-color: #11151c;
+}
+
+.conflict-side .diff-scroll {
+    -fx-pref-height: 150px;
+    -fx-min-height: 100px;
+}
+
+.conflict-result-pane .text-area {
+    -fx-pref-row-count: 7;
+}
+
 .text-area {
     -fx-text-fill: #e1e4ea;
     -fx-prompt-text-fill: #727987;
