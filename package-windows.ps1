@@ -1,6 +1,6 @@
 param(
     [string]$JdkHome = $env:JAVA_HOME,
-    [string]$AppVersion = "1.0.0",
+    [string]$AppVersion = "1.0.1",
     [string]$WiXHome
 )
 
@@ -80,24 +80,35 @@ try {
 
     Copy-Item (Join-Path $projectRoot "target\my-git-client-1.0-SNAPSHOT.jar") `
         (Join-Path $packageInput "gitdesk.jar") -Force
-    & $jpackage `
-        --type exe `
-        --name GitDesk `
-        --app-version $AppVersion `
-        --vendor GitDesk `
-        --description "Desktop Git client" `
-        --input $packageInput `
-        --main-jar gitdesk.jar `
-        --main-class com.git.client.Launcher `
-        --dest $installerDirectory `
-        --win-menu `
-        --win-shortcut `
-        --win-per-user-install
+    $iconPath = Join-Path $installerDirectory "GitDesk.ico"
+    & (Join-Path $env:JAVA_HOME "bin\java.exe") `
+        (Join-Path $projectRoot "tools\CreateWindowsIcon.java") `
+        (Join-Path $projectRoot "src\main\resources\com\git\client\gitdesk_icon.png") `
+        $iconPath
     if ($LASTEXITCODE -ne 0) {
-        throw "jpackage failed with exit code $LASTEXITCODE."
+        throw "Could not create the Windows application icon (exit code $LASTEXITCODE)."
+    }
+    foreach ($installerType in @("exe", "msi")) {
+        & $jpackage `
+            --type $installerType `
+            --name GitDesk `
+            --app-version $AppVersion `
+            --vendor GitDesk `
+            --description "Desktop Git client" `
+            --input $packageInput `
+            --main-jar gitdesk.jar `
+            --main-class com.git.client.Launcher `
+            --icon $iconPath `
+            --dest $installerDirectory `
+            --win-menu `
+            --win-shortcut `
+            --win-per-user-install
+        if ($LASTEXITCODE -ne 0) {
+            throw "jpackage failed creating the $installerType installer (exit code $LASTEXITCODE)."
+        }
     }
 
-    Write-Host "Installer created in $installerDirectory"
+    Write-Host "EXE and MSI installers created in $installerDirectory"
 }
 finally {
     Pop-Location

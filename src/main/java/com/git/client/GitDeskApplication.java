@@ -10,8 +10,10 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.Tab;
 import javafx.scene.control.Tooltip;
+import javafx.scene.image.Image;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -24,6 +26,8 @@ import org.eclipse.jgit.lib.Repository;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 
 /** JavaFX bootstrap and coordinator for the open repository tabs and Git operations. */
@@ -34,6 +38,8 @@ public class GitDeskApplication extends Application {
     private final MenuButton repositoryLabel = new MenuButton("No repository open");
     private final Label branchLabel = new Label("No branch");
     private final MenuButton actionsButton = new MenuButton("Git actions");
+    private final ProgressIndicator operationSpinner = new ProgressIndicator();
+    private final Deque<RepositoryRequest> pendingRepositoryOpens = new ArrayDeque<>();
     private Stage stage;
     private GitRepositoryService repositoryService;
     private GitActionsMenu actionsMenu;
@@ -42,6 +48,7 @@ public class GitDeskApplication extends Application {
     private javafx.scene.control.Button refreshButton;
     private boolean operationRunning;
     private boolean actionsMenuBusy;
+    private String preferredRepositoryPath = "";
     private RepositoryWorkspaceView activeWorkspace;
 
     @Override
@@ -65,6 +72,8 @@ public class GitDeskApplication extends Application {
         Scene scene = new Scene(root, 1180, 760);
         scene.getStylesheets().add(GitDeskApplication.class.getResource("styles.css").toExternalForm());
         stage.setTitle("GitDesk");
+        stage.getIcons().add(new Image(
+                GitDeskApplication.class.getResourceAsStream("gitdesk_icon.png")));
         stage.setMinWidth(900);
         stage.setMinHeight(620);
         stage.setScene(scene);
@@ -166,11 +175,17 @@ public class GitDeskApplication extends Application {
         refreshButton.setOnAction(event -> refreshRepository());
         MenuButton menu = actionsButton;
         menu.getStyleClass().add("secondary-button");
+        operationSpinner.setPrefSize(19, 19);
+        operationSpinner.setMaxSize(19, 19);
+        operationSpinner.setProgress(ProgressIndicator.INDETERMINATE_PROGRESS);
+        operationSpinner.setAccessibleText("Git operation in progress");
+        operationSpinner.setVisible(false);
+        operationSpinner.setManaged(false);
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         HBox heading = new HBox(6, repositoryLabel, addRepositoryButton);
         heading.setAlignment(Pos.CENTER_LEFT);
-        HBox toolbar = new HBox(14, appName, heading, spacer, branchLabel, menu,
+        HBox toolbar = new HBox(14, appName, heading, spacer, operationSpinner, branchLabel, menu,
                 cloneRepositoryButton, openRepositoryButton, refreshButton);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.setPadding(new Insets(16, 22, 16, 22));
@@ -179,13 +194,16 @@ public class GitDeskApplication extends Application {
     }
 
     private void restoreRepositories() {
-        for (String path : recentStore.openRepositories()) openRepository(Path.of(path), false);
-        String last = recentStore.lastRepository();
-        if (!last.isBlank()) selectRepositoryTab(last);
-        if (repositoryTabs.tabs().isEmpty()) {
-            recentStore.recentRepositories().stream().findFirst()
-                    .ifPresent(path -> openRepository(Path.of(path), false));
+        preferredRepositoryPath = recentStore.lastRepository();
+        for (String path : recentStore.openRepositories()) {
+            pendingRepositoryOpens.addLast(new RepositoryRequest(Path.of(path), false));
         }
+        if (pendingRepositoryOpens.isEmpty() && repositoryTabs.tabs().isEmpty()) {
+            recentStore.recentRepositories().stream().findFirst()
+                    .ifPresent(path -> pendingRepositoryOpens.addLast(
+                            new RepositoryRequest(Path.of(path), false)));
+        }
+        openNextRepository();
     }
 
     private void activateRepositoryTab(Tab tab) {
@@ -293,14 +311,63 @@ public class GitDeskApplication extends Application {
             }
             return;
         }
-        try {
-            GitRepositoryService opened = GitRepositoryService.open(directory);
-            createRepositoryTab(directory, opened);
-            if (!remember) recentStore.setLastRepository(path);
-        } catch (IOException exception) {
-            logService.error("Could not open repository at " + path, exception);
-            showError("Could not open repository", exception);
+        boolean alreadyQueued = pendingRepositoryOpens.stream().anyMatch(request ->
+                RepositoryTabManager.normalize(request.directory()).equals(path));
+        if (!alreadyQueued) pendingRepositoryOpens.addLast(new RepositoryRequest(directory, remember));
+        openNextRepository();
+    }
+
+    private void openNextRepository() {
+        if (operationRunning) return;
+        RepositoryRequest request = pendingRepositoryOpens.pollFirst();
+        if (request == null) {
+            if (!preferredRepositoryPath.isBlank()) selectRepositoryTab(preferredRepositoryPath);
+            return;
         }
+
+        String path = RepositoryTabManager.normalize(request.directory());
+        if (repositoryTabs.contains(path)) {
+            selectRepositoryTab(path);
+            openNextRepository();
+            return;
+        }
+
+        operationRunning = true;
+        setStatusText("Opening repository...");
+        logService.info("Opening repository: " + path);
+        updateControls();
+        Task<GitRepositoryService> task = new Task<>() {
+            @Override
+            protected GitRepositoryService call() throws Exception {
+                return GitRepositoryService.open(request.directory());
+            }
+        };
+        task.setOnSucceeded(event -> {
+            createRepositoryTab(request.directory(), task.getValue());
+            if (request.remember()) {
+                recentStore.remember(request.directory());
+                refreshRecentRepositoryList();
+            } else {
+                recentStore.setLastRepository(path);
+            }
+            operationRunning = false;
+            setStatusText("Repository opened successfully.");
+            logService.info("Opened repository successfully: " + path);
+            updateControls();
+            openNextRepository();
+        });
+        task.setOnFailed(event -> {
+            operationRunning = false;
+            Throwable failure = task.getException();
+            logService.error("Could not open repository at " + path, failure);
+            setStatusText("Could not open repository: " + errorMessage(failure));
+            updateControls();
+            showError("Could not open repository", failure);
+            openNextRepository();
+        });
+        Thread worker = new Thread(task, "git-open-repository");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private void refreshRepository() {
@@ -371,6 +438,7 @@ public class GitDeskApplication extends Application {
                 logService.info(operation + " completed successfully."
                         + (detail.isBlank() ? "" : " Result: " + detail));
             }
+            openNextRepository();
         });
         task.setOnFailed(event -> {
             actionsMenuBusy = false;
@@ -380,6 +448,7 @@ public class GitDeskApplication extends Application {
             setStatusText(operation + " failed: " + errorMessage(failure));
             updateControls();
             showError(operation + " failed", failure);
+            openNextRepository();
         });
         Thread worker = new Thread(task, "git-network-operation");
         worker.setDaemon(true);
@@ -407,6 +476,7 @@ public class GitDeskApplication extends Application {
             logService.info("Clone completed successfully at "
                     + destination.toAbsolutePath().normalize());
             updateControls();
+            openNextRepository();
         });
         task.setOnFailed(event -> {
             actionsMenuBusy = false;
@@ -416,6 +486,7 @@ public class GitDeskApplication extends Application {
             setStatusText("Clone failed: " + errorMessage(failure));
             updateControls();
             showError("Clone failed", failure);
+            openNextRepository();
         });
         Thread worker = new Thread(task, "git-clone-operation");
         worker.setDaemon(true);
@@ -475,6 +546,8 @@ public class GitDeskApplication extends Application {
 
     private void updateControls() {
         boolean hasRepository = repositoryService != null;
+        operationSpinner.setVisible(operationRunning);
+        operationSpinner.setManaged(operationRunning);
         actionsButton.setDisable(operationRunning || actionsMenuBusy);
         openRepositoryButton.setDisable(operationRunning);
         cloneRepositoryButton.setDisable(operationRunning);
@@ -518,5 +591,8 @@ public class GitDeskApplication extends Application {
         repositoryTabs.closeAll();
         logService.info("GitDesk application stopped.");
         logService.close();
+    }
+
+    private record RepositoryRequest(Path directory, boolean remember) {
     }
 }

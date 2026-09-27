@@ -11,9 +11,11 @@ Use the path to your own full JDK 17+ if it differs. The build also requires an 
 connection to download the official WiX Toolset 3 package from NuGet on the first run.
 The package SHA-512 is checked and its tools are extracted locally; no machine-wide WiX
 installation is needed. Use `-WiXHome` to select an existing WiX tools directory. The script creates
-`target\installer\GitDesk-1.0.0.exe`; override the version with
-`.\package-windows.ps1 -AppVersion 1.0.1`.
+`target\installer\GitDesk-1.0.1.exe` and `target\installer\GitDesk-1.0.1.msi`; override the
+version with `.\package-windows.ps1 -AppVersion 1.0.2`.
 
 The installer bundles the Java runtime and application dependencies, so users do not need
 to install Java separately. JGit is an automatic module, so packaging uses the classpath
-launcher rather than a trimmed `jlink` runtime image.
+launcher rather than a trimmed `jlink` runtime image. The JavaFX window uses
+`src\main\resources\com\git\client\gitdesk_icon.png`; the packaging script converts that
+same image to a multi-resolution Windows `.ico` for the executable, installer, and shortcuts.

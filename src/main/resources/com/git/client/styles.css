@@ -42,6 +42,10 @@
     -fx-opacity: 0.65;
 }
 
+.progress-indicator {
+    -fx-progress-color: #58a0ff;
+}
+
 .add-repository-button {
     -fx-min-width: 25px;
     -fx-min-height: 25px;

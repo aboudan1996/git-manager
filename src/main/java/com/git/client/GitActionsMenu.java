@@ -5,12 +5,15 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.GridPane;
+import javafx.scene.layout.Priority;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -21,6 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /** Builds Git action menus and owns their modal workflows; operations are delegated to the coordinator. */
 final class GitActionsMenu {
@@ -253,10 +257,66 @@ final class GitActionsMenu {
     }
 
     private void checkoutBranch() {
-        chooseBranch("Switch to branch", branch -> {
-            actions.repository().checkout(branch);
-            return "Switched to " + branch;
-        });
+        chooseBranchToSwitch();
+    }
+
+    private void chooseBranchToSwitch() {
+        try {
+            String current = actions.repository().getState().branch();
+            List<String> branches = actions.repository().getLocalBranches().stream()
+                    .filter(branch -> !branch.equals(current))
+                    .toList();
+            if (branches.isEmpty()) {
+                actions.showMessage("Switch branch", "There are no other local branches.");
+                return;
+            }
+
+            TextField search = new TextField();
+            search.setPromptText("Search branches...");
+            ListView<String> results = new ListView<>();
+            results.getItems().setAll(branches);
+            results.setCellFactory(list -> new ListCell<>() {
+                @Override
+                protected void updateItem(String branch, boolean empty) {
+                    super.updateItem(branch, empty);
+                    setText(empty ? null : branch);
+                }
+            });
+            search.textProperty().addListener((observable, previous, query) -> {
+                String normalized = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+                results.getItems().setAll(branches.stream()
+                        .filter(branch -> branch.toLowerCase(Locale.ROOT).contains(normalized))
+                        .toList());
+                results.getSelectionModel().clearSelection();
+            });
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.initOwner(actions.owner());
+            dialog.setTitle("Switch branch");
+            dialog.setHeaderText("Select or search for a local branch");
+            dialog.getDialogPane().setContent(new javafx.scene.layout.VBox(10, search, results));
+            dialog.getDialogPane().getButtonTypes().addAll(
+                    ButtonType.OK, ButtonType.CANCEL);
+            var okButton = dialog.getDialogPane().lookupButton(ButtonType.OK);
+            okButton.disableProperty().bind(results.getSelectionModel().selectedItemProperty().isNull());
+            results.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && results.getSelectionModel().getSelectedItem() != null) {
+                    ((javafx.scene.control.Button) okButton).fire();
+                }
+            });
+            results.setPrefSize(420, 320);
+            javafx.scene.layout.VBox.setVgrow(results, Priority.ALWAYS);
+            dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(ignored -> {
+                String branch = results.getSelectionModel().getSelectedItem();
+                if (branch != null) {
+                    actions.remoteAction("Switch branch", () -> {
+                        actions.repository().checkout(branch);
+                        return "Switched to " + branch;
+                    });
+                }
+            });
+        } catch (IOException | GitAPIException exception) {
+            actions.showError("Could not list branches", exception);
+        }
     }
 
     private void chooseBranch(String title, BranchAction action) {
