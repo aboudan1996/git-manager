@@ -1,6 +1,7 @@
 package com.git.client;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -80,6 +81,7 @@ public class GitDeskApplication extends Application {
     private Label loginStatus;
     private ProgressIndicator loginSpinner;
     private boolean repositoriesRestored;
+    private WorktreeWatcher worktreeWatcher;
 
     @Override
     public void start(Stage stage) {
@@ -548,6 +550,7 @@ public class GitDeskApplication extends Application {
 
     private void activateRepositoryTab(Tab tab) {
         if (tab == null) {
+            stopWorktreeWatcher();
             repositoryService = null;
             repositoryLabel.setText("No repository open");
             repositoryLabel.setTooltip(null);
@@ -560,6 +563,7 @@ public class GitDeskApplication extends Application {
             String path = repositoryTabs.path(tab);
             repositoryService = repositoryTabs.repository(path);
             if (repositoryService != null) {
+                watchWorktree(repositoryService);
                 workspace().resetForRepository();
                 recentStore.setLastRepository(path);
                 refreshRepository();
@@ -570,6 +574,31 @@ public class GitDeskApplication extends Application {
         refreshOpenRepositoryMenu();
         if (tab != null) persistOpenRepositories();
         updateControls();
+    }
+
+    private void watchWorktree(GitRepositoryService service) {
+        stopWorktreeWatcher();
+        Repository repository = service.getRepository();
+        try {
+            worktreeWatcher = new WorktreeWatcher(
+                    repository.getWorkTree().toPath(),
+                    repository.getDirectory().toPath(),
+                    () -> Platform.runLater(() -> {
+                        if (repositoryService == service && !operationRunning) {
+                            refreshRepository();
+                        }
+                    }),
+                    exception -> logService.error("Could not watch repository changes.", exception));
+        } catch (IOException exception) {
+            logService.error("Could not start repository change detection.", exception);
+            setStatusText("Automatic change detection is unavailable: " + errorMessage(exception));
+        }
+    }
+
+    private void stopWorktreeWatcher() {
+        if (worktreeWatcher == null) return;
+        worktreeWatcher.close();
+        worktreeWatcher = null;
     }
 
     private void createRepositoryTab(Path directory, GitRepositoryService service) {
@@ -1021,6 +1050,7 @@ public class GitDeskApplication extends Application {
 
     @Override
     public void stop() {
+        stopWorktreeWatcher();
         persistOpenRepositories();
         repositoryTabs.closeAll();
         if (authenticatedAccount != null) authenticatedAccount.close();
