@@ -13,7 +13,7 @@ final class RecentRepositoryStore {
     private static final String RECENT_REPOSITORIES_KEY = "recentRepositories";
     private static final String OPEN_REPOSITORIES_KEY = "openRepositories";
     private static final int MAX_RECENT_REPOSITORIES = 8;
-    private final Preferences preferences = Preferences.userNodeForPackage(GitDeskApplication.class);
+    private final Preferences preferences = Preferences.userNodeForPackage(GitPilotApplication.class);
 
     List<String> recentRepositories() {
         String stored = preferences.get(RECENT_REPOSITORIES_KEY, "");

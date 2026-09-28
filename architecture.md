@@ -33,7 +33,7 @@ il ne construit pas l'interface et ne contient pas la logique métier.
 
 La configuration du plugin JavaFX dans [`pom.xml`](pom.xml) désigne le module et la classe
 `com.git.client/com.git.client.Launcher`. Après le démarrage du runtime JavaFX, celui-ci instancie
-[`GitDeskApplication`](src/main/java/com/git/client/ui/GitDeskApplication.java), qui est le contrôleur
+[`GitPilotApplication`](src/main/java/com/git/client/ui/GitDeskApplication.java), qui est le contrôleur
 principal et le coordinateur de l'application.
 
 ### Initialisation JavaFX
@@ -128,7 +128,7 @@ nécessaires au lancement JavaFX et aux points d'extension documentés.
 ### Démarrage et orchestration
 
 - **`Launcher`** : point d'entrée Java standard utilisé par JavaFX.
-- **`GitDeskApplication`** (`com.git.client.ui`) : classe JavaFX principale (`Application`) et racine de composition. Elle
+- **`GitPilotApplication`** (`com.git.client.ui`) : classe JavaFX principale (`Application`) et racine de composition. Elle
   construit les implémentations par défaut des contrats, compose les vues, gère l'état global et
   relie les interactions de l'interface aux services. Elle coordonne l'ouverture et la sélection des
   dépôts, les opérations asynchrones, les rafraîchissements, les conflits, l'authentification et la
@@ -138,13 +138,13 @@ nécessaires au lancement JavaFX et aux points d'extension documentés.
   changements de sélection.
 - **`GitActionsMenu`** (`ui`) : construit le menu des commandes Git et les dialogues associés (branches,
   remotes, clone, opérations sur les commits, etc.). Il ne gère pas lui-même l'accès au dépôt :
-  `GitDeskApplication` lui fournit un objet `Actions` qui délègue vers le service courant.
+  `GitPilotApplication` lui fournit un objet `Actions` qui délègue vers le service courant.
 
 ### Interface
 
 - **`RepositoryWorkspaceView`** (`ui`) : construit l'espace de travail JavaFX : historique des commits,
   stashs, recherche, modifications staged/unstaged, conflits, diff et commit. Sa petite interface
-  `Actions` transmet les interactions à `GitDeskApplication`, évitant de rendre cette vue
+  `Actions` transmet les interactions à `GitPilotApplication`, évitant de rendre cette vue
   propriétaire du service Git.
 - **`DialogStyler`** (`ui`) : ajoute la feuille `styles.css` et la classe CSS commune aux dialogues.
 - **`styles.css`** : définit la palette, les contrôles, états de survol/sélection, listes, barre
@@ -243,7 +243,7 @@ manuelle. Le watcher est fermé lors du changement de dépôt ou à l'arrêt de 
 ### Opération Git déclenchée depuis l'interface
 
 Les boutons et menus appellent les interfaces `Actions` exposées par `RepositoryWorkspaceView` ou
-`GitActionsMenu`. Leurs implémentations anonymes dans `GitDeskApplication` choisissent le
+`GitActionsMenu`. Leurs implémentations anonymes dans `GitPilotApplication` choisissent le
 `repositoryService` actif et invoquent la méthode adaptée. Les commandes locales passent par
 `runRepositoryAction`; les opérations distantes utilisent le flux asynchrone `runRemoteAction`.
 Après l'action, l'application actualise l'état et communique le résultat dans la barre de statut et
@@ -256,7 +256,7 @@ changements des contrôles JavaFX sont ensuite effectués sur le thread d'interf
 ### Rebase et résolution de conflit
 
 1. Le menu appelle `GitRepositoryService.rebase`.
-2. Une fois l'opération terminée, `GitDeskApplication` rafraîchit le dépôt puis relit la liste des
+2. Une fois l'opération terminée, `GitPilotApplication` rafraîchit le dépôt puis relit la liste des
    conflits : JGit peut signaler un rebase arrêté sans lancer d'exception.
 3. Si des chemins conflictuels existent, l'application charge le contenu des étapes Git et ouvre
    le dialogue de résolution du premier fichier.
@@ -268,7 +268,7 @@ changements des contrôles JavaFX sont ensuite effectués sur le thread d'interf
 
 ### Authentification
 
-Au démarrage, `GitDeskApplication` demande à `GitAccountService` de charger puis vérifier une session
+Au démarrage, `GitPilotApplication` demande à `GitAccountService` de charger puis vérifier une session
 persistée. La vérification réseau et la connexion sont effectuées dans des tâches asynchrones.
 Lorsqu'un compte est actif, son fournisseur d'identifiants est attaché aux services de dépôts ouverts
 pour les opérations distantes. À la déconnexion, les identifiants sont retirés des services et le
@@ -333,7 +333,7 @@ Ce tableau décrit uniquement les patterns réellement utilisés dans le code.
 | **Observer / callbacks** | propriétés JavaFX, callbacks de `RepositoryTabManager` et `RepositoryChangeMonitor` | Les changements de sélection, d'état UI et du système de fichiers sont notifiés aux consommateurs sans que le service de surveillance manipule l'interface. Le callback du watcher retourne sur le thread JavaFX via `Platform.runLater`. |
 | **Registry** | `RepositoryTabManager.repositories` | L'index par chemin normalisé permet de retrouver et dédupliquer les services de dépôts ouverts. Le gestionnaire possède aussi leur cycle de vie et les ferme avec leurs onglets. |
 | **Adapter** | `WindowsCredentialStore` | Adapte les opérations natives du Credential Manager et le pont PowerShell aux opérations `load`, `save` et `delete` consommées par GitPilot. Les autres classes n'accèdent pas directement aux structures Win32. |
-| **Injection de dépendances manuelle** | constructeurs de `GitDeskApplication` | Le constructeur sans argument conserve la compatibilité JavaFX puis délègue au constructeur interne qui reçoit logger et factories. Cette composition simple maintient le nombre de dépendances bas; la substitution est possible au code mais n'est pas configurée par un conteneur externe. |
+| **Injection de dépendances manuelle** | constructeurs de `GitPilotApplication` | Le constructeur sans argument conserve la compatibilité JavaFX puis délègue au constructeur interne qui reçoit logger et factories. Cette composition simple maintient le nombre de dépendances bas; la substitution est possible au code mais n'est pas configurée par un conteneur externe. |
 
 **Strategy n'est pas revendiqué** : GitHub et GitLab sont représentés par un enum et leurs variations sont encore traitées par des conditions dans `GitAccountService`. Une stratégie par fournisseur deviendra utile si des fournisseurs personnalisés ou davantage de comportements spécifiques sont ajoutés; l'abstraction n'est pas nécessaire actuellement.
 

@@ -1,6 +1,5 @@
 package com.git.client.ui;
 
-import com.git.client.git.ConflictResolutionDocument;
 import com.git.client.git.JGitRepositoryServiceFactory;
 import com.git.client.git.RepositoryOperations;
 import com.git.client.git.RepositoryServiceFactory;
@@ -39,7 +38,6 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
-import javafx.scene.shape.Rectangle;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Screen;
@@ -58,7 +56,7 @@ import java.util.Locale;
 import java.util.Objects;
 
 /** JavaFX bootstrap and coordinator for the open repository tabs and Git operations. */
-public class GitDeskApplication extends Application {
+public class GitPilotApplication extends Application {
     private final ApplicationLogger logService;
     private final RecentRepositoryStore recentStore;
     private final RepositoryTabManager repositoryTabs;
@@ -99,14 +97,14 @@ public class GitDeskApplication extends Application {
     private RepositoryChangeMonitor worktreeWatcher;
 
     /** Default constructor required by the JavaFX application launcher. */
-    public GitDeskApplication() {
+    public GitPilotApplication() {
         this(new LogService(), new JGitRepositoryServiceFactory(),
                 new NioRepositoryChangeMonitorFactory());
     }
 
     /** Constructor injection keeps infrastructure implementations replaceable in tests/deployments. */
-    GitDeskApplication(ApplicationLogger logService, RepositoryServiceFactory repositoryServiceFactory,
-                       RepositoryChangeMonitorFactory changeMonitorFactory) {
+    GitPilotApplication(ApplicationLogger logService, RepositoryServiceFactory repositoryServiceFactory,
+                        RepositoryChangeMonitorFactory changeMonitorFactory) {
         this.logService = Objects.requireNonNull(logService);
         this.repositoryServiceFactory = Objects.requireNonNull(repositoryServiceFactory);
         this.changeMonitorFactory = Objects.requireNonNull(changeMonitorFactory);
@@ -140,10 +138,10 @@ public class GitDeskApplication extends Application {
         double initialWidth = Math.min(1440, screenBounds.getWidth() * 0.95);
         double initialHeight = screenBounds.getHeight() * 0.94;
         Scene scene = new Scene(root, initialWidth, initialHeight);
-        scene.getStylesheets().add(Objects.requireNonNull(GitDeskApplication.class.getResource("styles.css")).toExternalForm());
+        scene.getStylesheets().add(Objects.requireNonNull(GitPilotApplication.class.getResource("styles.css")).toExternalForm());
         stage.setTitle("GitPilot");
         stage.getIcons().add(new Image(
-                Objects.requireNonNull(GitDeskApplication.class.getResourceAsStream("/gitdesk_icon.png"))));
+                Objects.requireNonNull(GitPilotApplication.class.getResourceAsStream("/gitdesk_icon.png"))));
         stage.setMinWidth(Math.min(900, screenBounds.getWidth() * 0.8));
         stage.setMinHeight(Math.min(620, screenBounds.getHeight() * 0.75));
         stage.setScene(scene);
@@ -474,10 +472,10 @@ public class GitDeskApplication extends Application {
                 logService.event(event, detail);
             }
             @Override public void showError(String title, Throwable error) {
-                GitDeskApplication.this.showError(title, error);
+                GitPilotApplication.this.showError(title, error);
             }
             @Override public void showMessage(String title, String message) {
-                GitDeskApplication.this.showMessage(title, message);
+                GitPilotApplication.this.showMessage(title, message);
             }
             @Override public void clone(String url, String username, char[] secret, Path destination) {
                 cloneRepository(url, username, secret, destination);
