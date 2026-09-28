@@ -1,6 +1,6 @@
 param(
     [string]$JdkHome = $env:JAVA_HOME,
-    [string]$AppVersion = "1.8.0",
+    [string]$AppVersion = "1.9.0",
     [string]$WiXHome
 )
 

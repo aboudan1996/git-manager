@@ -33,7 +33,7 @@ il ne construit pas l'interface et ne contient pas la logique métier.
 
 La configuration du plugin JavaFX dans [`pom.xml`](pom.xml) désigne le module et la classe
 `com.git.client/com.git.client.Launcher`. Après le démarrage du runtime JavaFX, celui-ci instancie
-[`GitDeskApplication`](src/main/java/com/git/client/GitDeskApplication.java), qui est le contrôleur
+[`GitDeskApplication`](src/main/java/com/git/client/ui/GitDeskApplication.java), qui est le contrôleur
 principal et le coordinateur de l'application.
 
 ### Initialisation JavaFX
@@ -61,122 +61,148 @@ src/
       module-info.java
       com/git/client/
         Launcher.java
-        GitDeskApplication.java
-        RepositoryWorkspaceView.java
-        GitActionsMenu.java
-        RepositoryTabManager.java
-        GitRepositoryService.java
-        RepositoryOperations.java
-        RepositoryServiceFactory.java
-        JGitRepositoryServiceFactory.java
-        GitDiffHistoryService.java
-        GitConflictResolutionService.java
-        ConflictResolutionDocument.java
-        WorktreeWatcher.java
-        RepositoryChangeMonitor.java
-        RepositoryChangeMonitorFactory.java
-        NioRepositoryChangeMonitorFactory.java
-        GitCredentials.java
-        ApplicationLogger.java
-        ApplicationEvent.java
-        GitAccountService.java
-        WindowsCredentialStore.java
-        RecentRepositoryStore.java
-        LogService.java
-        DialogStyler.java
+        ui/
+          package-info.java
+          GitDeskApplication.java
+          RepositoryWorkspaceView.java
+          GitActionsMenu.java
+          RepositoryTabManager.java
+          RecentRepositoryStore.java
+          DialogStyler.java
+        git/
+          package-info.java
+          GitRepositoryService.java
+          RepositoryOperations.java
+          RepositoryServiceFactory.java
+          JGitRepositoryServiceFactory.java
+          GitDiffHistoryService.java
+          GitConflictResolutionService.java
+          ConflictResolutionDocument.java
+          GitCredentials.java
+        platform/
+          package-info.java
+          WorktreeWatcher.java
+          RepositoryChangeMonitor.java
+          RepositoryChangeMonitorFactory.java
+          NioRepositoryChangeMonitorFactory.java
+          GitAccountService.java
+          WindowsCredentialStore.java
+          ApplicationLogger.java
+          ApplicationEvent.java
+          LogService.java
     resources/
       com/git/client/
         styles.css
         gitdesk_icon.png
   test/
     java/com/git/client/
-      *Test.java
+      git/
+        GitRepositoryServiceTest.java
+        ConflictResolutionDocumentTest.java
+        RepositoryServiceFactoryTest.java
+      platform/
+        GitAccountServiceTest.java
+        WindowsCredentialStoreTest.java
+        WorktreeWatcherTest.java
 ```
 
 Le projet utilise Java 17 (compilation `--release 17`), JavaFX 21, JGit 7 et JUnit 5. Le descripteur
-[`module-info.java`](src/main/java/module-info.java) déclare le module `com.git.client` et ses
-dépendances JavaFX, JGit et Java standard.
+[`module-info.java`](src/main/java/module-info.java) déclare le module `com.git.client`, ses
+dépendances et les packages exposés (`ui`, `git`, `platform`).
 
-## 4. Responsabilités des classes
+## 4. Packages et responsabilités des classes
+
+- **`com.git.client`** : contient uniquement `Launcher`, le point d'entrée minimal qui appelle
+  JavaFX.
+- **`com.git.client.ui`** : regroupe l'application JavaFX, ses vues, ses menus, les onglets de
+  dépôts et les préférences utilisées par l'interface.
+- **`com.git.client.git`** : regroupe les contrats du dépôt, l'adaptateur JGit et les services
+  spécialisés pour les diffs et la résolution de conflits.
+- **`com.git.client.platform`** : regroupe les adaptateurs du système et des fournisseurs externes :
+  comptes, stockage sécurisé Windows, logs et surveillance NIO.
+
+Cette séparation suit le sens des dépendances : l'interface consomme les contrats Git et plateforme;
+les implémentations système ne dépendent pas des vues. `module-info.java` exporte les packages
+nécessaires au lancement JavaFX et aux points d'extension documentés.
 
 ### Démarrage et orchestration
 
 - **`Launcher`** : point d'entrée Java standard utilisé par JavaFX.
-- **`GitDeskApplication`** : classe JavaFX principale (`Application`) et racine de composition. Elle
+- **`GitDeskApplication`** (`com.git.client.ui`) : classe JavaFX principale (`Application`) et racine de composition. Elle
   construit les implémentations par défaut des contrats, compose les vues, gère l'état global et
   relie les interactions de l'interface aux services. Elle coordonne l'ouverture et la sélection des
   dépôts, les opérations asynchrones, les rafraîchissements, les conflits, l'authentification et la
   fermeture.
-- **`RepositoryTabManager`** : maintient les onglets de dépôt et associe chaque onglet à son
+- **`RepositoryTabManager`** (`ui`) : maintient les onglets de dépôt et associe chaque onglet à son
   `RepositoryOperations`. Il ferme le service quand l'onglet est fermé et notifie l'application des
   changements de sélection.
-- **`GitActionsMenu`** : construit le menu des commandes Git et les dialogues associés (branches,
+- **`GitActionsMenu`** (`ui`) : construit le menu des commandes Git et les dialogues associés (branches,
   remotes, clone, opérations sur les commits, etc.). Il ne gère pas lui-même l'accès au dépôt :
   `GitDeskApplication` lui fournit un objet `Actions` qui délègue vers le service courant.
 
 ### Interface
 
-- **`RepositoryWorkspaceView`** : construit l'espace de travail JavaFX : historique des commits,
+- **`RepositoryWorkspaceView`** (`ui`) : construit l'espace de travail JavaFX : historique des commits,
   stashs, recherche, modifications staged/unstaged, conflits, diff et commit. Sa petite interface
   `Actions` transmet les interactions à `GitDeskApplication`, évitant de rendre cette vue
   propriétaire du service Git.
-- **`DialogStyler`** : ajoute la feuille `styles.css` et la classe CSS commune aux dialogues.
+- **`DialogStyler`** (`ui`) : ajoute la feuille `styles.css` et la classe CSS commune aux dialogues.
 - **`styles.css`** : définit la palette, les contrôles, états de survol/sélection, listes, barre
   d'outils et dialogues. Les composants et leurs comportements restent créés en Java.
 - **`gitdesk_icon.png`** : icône de la fenêtre et de l'application.
 
 ### Accès à Git et gestion des différences
 
-- **`GitRepositoryService`** : façade métier autour de JGit pour un dépôt donné. Elle ouvre ou clone
+- **`GitRepositoryService`** (`git`) : façade métier autour de JGit pour un dépôt donné. Elle ouvre ou clone
   les dépôts et expose les commandes utilisées par l'interface : état, stage/unstage, commit,
   branches locales/distantes, checkout, merge, rebase, stash, fetch, pull, push, undo/redo,
   historique et conflits. Elle conserve aussi les fournisseurs d'identifiants réseau associés au
   dépôt. Elle implémente `AutoCloseable`; le gestionnaire d'onglets ferme le service avec son dépôt.
-- **`RepositoryOperations`** : contrat des opérations d'un dépôt consommées par le coordinateur,
+- **`RepositoryOperations`** (`git`) : contrat des opérations d'un dépôt consommées par le coordinateur,
   le gestionnaire d'onglets et le menu. Les modèles de résultat sont définis au niveau du contrat;
   les consommateurs ne dépendent ainsi pas de la classe JGit concrète. La signature propage encore
   `GitAPIException`; l'abstraction n'est donc pas indépendante de toutes les API JGit.
-- **`RepositoryServiceFactory`** : contrat de création des services de dépôt;
+- **`RepositoryServiceFactory`** (`git`) : contrat de création des services de dépôt;
   `JGitRepositoryServiceFactory` fournit l'implémentation actuellement sélectionnée.
-- **`GitDiffHistoryService`** : responsabilité spécialisée de calcul et de rendu des différences.
+- **`GitDiffHistoryService` (`git`)** : responsabilité spécialisée de calcul et de rendu des différences.
   Elle produit les diff du worktree, de l'index, des commits, des stashs et le patch des changements
   locaux. `GitRepositoryService` lui délègue ces lectures.
-- **`GitConflictResolutionService`** : lit les étapes de l'index JGit (base, côté courant, côté
+- **`GitConflictResolutionService` (`git`)** : lit les étapes de l'index JGit (base, côté courant, côté
   entrant), localise les fichiers en conflit et écrit/stage le résultat sélectionné. Il vérifie
   que le chemin reste dans le worktree et refuse les liens symboliques pour éviter de sortir du
   dépôt.
-- **`ConflictResolutionDocument`** : transforme les marqueurs textuels en blocs de conflit et
+- **`ConflictResolutionDocument` (`git`)** : transforme les marqueurs textuels en blocs de conflit et
   contexte, retient les choix « current », « incoming » ou « both », puis compose le contenu
   résolu. La vue demande un choix pour chaque bloc avant d'activer **Mark resolved**.
 
 ### Détection et persistance
 
-- **`WorktreeWatcher`** : surveille les répertoires du worktree actif avec `WatchService`. Les
+- **`WorktreeWatcher` (`platform`)** : surveille les répertoires du worktree actif avec `WatchService`. Les
   nouveaux dossiers sont enregistrés au fur et à mesure; `.git` est exclu de la surveillance
   générale, mais certains fichiers de métadonnées Git pertinents (HEAD, index, refs, etc.) sont
   suivis spécifiquement. Les événements sont regroupés sur une courte fenêtre avant d'appeler le
   rafraîchissement.
-- **`RepositoryChangeMonitor`** et `RepositoryChangeMonitorFactory` : contrats de cycle de vie et
+- **`RepositoryChangeMonitor` et `RepositoryChangeMonitorFactory` (`platform`)** : contrats de cycle de vie et
   de création du moniteur; `NioRepositoryChangeMonitorFactory` fournit le watcher NIO du JDK.
-- **`RecentRepositoryStore`** : conserve les chemins des dépôts récents, du dernier dépôt et des
+- **`RecentRepositoryStore` (`ui`)** : conserve les chemins des dépôts récents, du dernier dépôt et des
   dépôts à restaurer via `java.util.prefs.Preferences`. Il filtre les chemins qui n'existent plus.
-- **`WindowsCredentialStore`** : encapsule le Windows Credential Manager pour lire, sauvegarder et
+- **`WindowsCredentialStore` (`platform`)** : encapsule le Windows Credential Manager pour lire, sauvegarder et
   supprimer des secrets. Les valeurs sont échangées avec un script PowerShell local; la persistance
   est disponible uniquement sous Windows.
-- **`GitCredentials`** : interface minimale d'identité et de token utilisée par la couche dépôt;
+- **`GitCredentials` (`git`)** : interface minimale d'identité et de token utilisée par la couche dépôt;
   `GitAccountService.Account` l'implémente. Un secret est fourni comme copie dont le consommateur
   peut effacer le contenu.
-- **`ApplicationLogger`** : port de journalisation injecté dans le coordinateur et transmis par
+- **`ApplicationLogger` (`platform`)** : port de journalisation injecté dans le coordinateur et transmis par
   callbacks aux vues et menus.
-- **`ApplicationEvent`** : catalogue des événements de cycle de vie et d'interaction consignés par
+- **`ApplicationEvent` (`platform`)** : catalogue des événements de cycle de vie et d'interaction consignés par
   le journal applicatif.
-- **`LogService`** : écrit les messages de diagnostic sur la console et dans
+- **`LogService` (`platform`)** : écrit les messages de diagnostic sur la console et dans
   `~/.gitdesk/logs/gitdesk.log`, avec rotation. Le formateur masque les identifiants inclus dans
   certaines URL et les tokens GitHub reconnus.
 
 ### Comptes GitHub/GitLab
 
-- **`GitAccountService`** : valide un Personal Access Token en appelant le point d'API utilisateur
+- **`GitAccountService` (`platform`)** : valide un Personal Access Token en appelant le point d'API utilisateur
   GitHub ou GitLab avec `HttpClient`. Il identifie le nom de compte, restaure/vérifie une session
   sauvegardée et demande la suppression des identifiants à la déconnexion.
 - **`GitAccountService.Account`** : contient le fournisseur, le nom du compte et une copie du token;
@@ -329,16 +355,13 @@ exclus pour garder un journal exploitable.
 
 ## 10. Tests et construction
 
-Les tests JUnit 5 sous `src/test/java/com/git/client` couvrent notamment :
+Les tests JUnit 5 sont rangés selon les packages du code sous `src/test/java/com/git/client` :
 
 - les opérations de dépôt (stage/unstage, commit, branches distantes, rebase et stashs) dans
-  `GitRepositoryServiceTest`;
-- la création de services derrière `RepositoryOperations` dans `RepositoryServiceFactoryTest`;
-- le découpage et l'assemblage des blocs de conflit dans `ConflictResolutionDocumentTest`;
-- la détection des modifications du worktree, y compris les nouveaux répertoires, dans
-  `WorktreeWatcherTest`;
-- les comptes et le stockage d'identifiants dans `GitAccountServiceTest` et
-  `WindowsCredentialStoreTest`.
+  `git/GitRepositoryServiceTest`;
+- la création derrière le contrat et la résolution de conflits dans
+  `git/RepositoryServiceFactoryTest` et `git/ConflictResolutionDocumentTest`;
+- la détection des changements et les services d'identité/stockage dans `platform/*Test`.
 
 `mvnw.cmd test` exécute la suite sur Windows; `mvnw.cmd javafx:run` lance l'application depuis
 Maven. Le script `package-windows.ps1` construit les installateurs Windows (EXE et MSI) et

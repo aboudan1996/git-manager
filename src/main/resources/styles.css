@@ -1,0 +1,684 @@
+.root {
+    -fx-font-family: "Segoe UI", "Arial";
+    -fx-font-size: 13px;
+    -fx-focus-color: #668df2;
+    -fx-faint-focus-color: rgba(102, 141, 242, 0.18);
+}
+
+.app-root {
+    -fx-background-color: #101319;
+}
+
+.toolbar {
+    -fx-background-color: #171b24;
+    -fx-border-color: transparent transparent #292f3a transparent;
+}
+
+.app-name {
+    -fx-text-fill: #f4f5f7;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.repository-label {
+    -fx-text-fill: #d8dbe2;
+    -fx-font-size: 13px;
+}
+
+.repository-switcher {
+    -fx-background-color: transparent;
+    -fx-padding: 5px 8px;
+    -fx-background-radius: 5px;
+    -fx-font-size: 13px;
+}
+
+.repository-switcher:hover {
+    -fx-background-color: #292d36;
+}
+
+.repository-switcher.button {
+    -fx-padding: 5px 9px;
+    -fx-font-weight: normal;
+    -fx-background-insets: 0;
+}
+
+.repository-switcher .arrow {
+    -fx-background-color: #9298a5;
+}
+
+.repository-switcher:disabled {
+    -fx-opacity: 0.65;
+}
+
+.progress-indicator {
+    -fx-progress-color: #58a0ff;
+}
+
+.add-repository-button {
+    -fx-text-fill: white;
+    -fx-min-width: 42px;
+    -fx-pref-width: 46px;
+    -fx-max-width: 46px;
+    -fx-min-height: 42px;
+    -fx-padding: 4px 5px;
+}
+
+.add-repository-icon > .rectangle {
+    -fx-fill: white;
+}
+
+.add-repository-button:hover .add-repository-icon > .rectangle {
+    -fx-fill: white;
+}
+
+.branch-badge {
+    -fx-padding: 6px 10px;
+    -fx-background-radius: 12px;
+    -fx-background-color: #26344c;
+    -fx-text-fill: #a9c8ff;
+    -fx-font-size: 12px;
+    -fx-cursor: hand;
+}
+
+.branch-badge:hover {
+    -fx-background-color: #34496b;
+}
+
+.muted-badge {
+    -fx-background-color: #292c34;
+    -fx-text-fill: #9298a5;
+}
+
+.history-pane {
+    -fx-background-color: #151920;
+    -fx-border-color: transparent #292f3a transparent transparent;
+}
+
+.activity-tabs {
+    -fx-background-color: transparent;
+    -fx-tab-min-width: 94px;
+}
+
+.activity-tabs > .tab-header-area > .tab-header-background {
+    -fx-background-color: transparent;
+}
+
+.activity-tabs .tab {
+    -fx-background-color: #1b202a;
+    -fx-background-radius: 6px 6px 0 0;
+    -fx-padding: 5px 12px;
+}
+
+.activity-tabs .tab:selected {
+    -fx-background-color: #263654;
+}
+
+.activity-tabs .tab .tab-label {
+    -fx-text-fill: #aeb9ca;
+}
+
+.activity-tabs .tab:selected .tab-label {
+    -fx-text-fill: #f2f5fa;
+}
+
+.activity-tabs > .tab-content-area {
+    -fx-background-color: transparent;
+}
+
+.section-title {
+    -fx-text-fill: #eef0f4;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.status-label,
+.commit-details {
+    -fx-text-fill: #9298a5;
+    -fx-font-size: 11px;
+}
+
+.status-success {
+    -fx-text-fill: #79d69a;
+}
+
+.status-error {
+    -fx-text-fill: #f08b94;
+}
+
+.list-view,
+.change-list {
+    -fx-background-color: #171b23;
+    -fx-control-inner-background: #171b23;
+    -fx-background-insets: 0;
+    -fx-border-color: #2a2e38;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+}
+
+.list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #c9cdd6;
+    -fx-padding: 10px;
+    -fx-border-color: transparent transparent #252932 transparent;
+}
+
+.list-cell:filled:selected {
+    -fx-background-color: #263654;
+    -fx-text-fill: white;
+}
+
+.list-cell:empty {
+    -fx-border-color: transparent;
+}
+
+.change-list .list-cell {
+    -fx-padding: 3px 8px;
+    -fx-font-size: 11px;
+}
+
+.label {
+    -fx-text-fill: #aeb3bf;
+}
+
+.commit-summary {
+    -fx-text-fill: #e1e4ea;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.change-pane {
+    -fx-padding: 14px;
+    -fx-background-color: #171b23;
+    -fx-background-radius: 8px;
+    -fx-border-color: #2a303b;
+    -fx-border-radius: 8px;
+}
+
+.commit-pane {
+    -fx-padding: 16px;
+    -fx-background-color: #171b23;
+    -fx-background-radius: 8px;
+    -fx-border-color: #2a303b;
+    -fx-border-radius: 8px;
+}
+
+.diff-pane {
+    -fx-padding: 14px;
+    -fx-background-color: #171b23;
+    -fx-background-radius: 8px;
+    -fx-border-color: #2a303b;
+    -fx-border-radius: 8px;
+}
+
+.diff-scroll {
+    -fx-background: #111318;
+    -fx-background-color: #111318;
+    -fx-border-color: #303540;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+}
+
+.diff-scroll > .viewport {
+    -fx-background-color: #111318;
+}
+
+.diff-lines {
+    -fx-background-color: #111318;
+    -fx-padding: 8px 0;
+}
+
+.diff-line {
+    -fx-font-family: "Consolas", "Courier New";
+    -fx-font-size: 12px;
+    -fx-padding: 2px 9px;
+}
+
+.diff-added {
+    -fx-background-color: #18372c;
+    -fx-text-fill: #9be2b6;
+}
+
+.diff-removed {
+    -fx-background-color: #3a2228;
+    -fx-text-fill: #f0a1a8;
+}
+
+.diff-header {
+    -fx-background-color: #202838;
+    -fx-text-fill: #a9c8ff;
+}
+
+.diff-context {
+    -fx-text-fill: #c9cdd6;
+}
+
+.diff-error {
+    -fx-text-fill: #f0a1a8;
+}
+
+.resolution-editor {
+    -fx-border-color: #3478f6;
+}
+
+.conflict-hunks {
+    -fx-padding: 10px;
+    -fx-background-color: #111318;
+}
+
+.conflict-hunk,
+.conflict-side,
+.conflict-result-pane {
+    -fx-padding: 12px;
+    -fx-background-color: #171b23;
+    -fx-background-radius: 7px;
+    -fx-border-color: #2a303b;
+    -fx-border-radius: 7px;
+}
+
+.conflict-side {
+    -fx-background-color: #11151c;
+}
+
+.conflict-side .diff-scroll {
+    -fx-pref-height: 150px;
+    -fx-min-height: 100px;
+}
+
+.conflict-result-pane .text-area {
+    -fx-pref-row-count: 7;
+}
+
+.text-area {
+    -fx-text-fill: #e1e4ea;
+    -fx-prompt-text-fill: #727987;
+    -fx-control-inner-background: #111318;
+    -fx-background-color: #111318;
+    -fx-border-color: #303540;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+}
+
+.text-area .content {
+    -fx-background-color: #111318;
+}
+
+.button {
+    -fx-cursor: hand;
+    -fx-background-radius: 6px;
+    -fx-padding: 8px 13px;
+    -fx-font-weight: bold;
+}
+
+.secondary-button {
+    -fx-background-color: #282e39;
+    -fx-text-fill: #e1e4ea;
+}
+
+.secondary-button:hover {
+    -fx-background-color: #343c4a;
+}
+
+.secondary-button:focused,
+.text-field:focused,
+.text-area:focused,
+.list-view:focused {
+    -fx-border-color: #668df2;
+}
+
+.text-button {
+    -fx-background-color: transparent;
+    -fx-text-fill: #83adff;
+    -fx-padding: 5px 7px;
+}
+
+.text-button:hover {
+    -fx-background-color: #252c39;
+}
+
+.button:disabled {
+    -fx-opacity: 0.45;
+}
+
+.context-menu {
+    -fx-background-color: #1a1f29;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8px;
+    -fx-border-color: #343c49;
+    -fx-border-radius: 8px;
+    -fx-padding: 6px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.42), 16, 0.18, 0, 5);
+}
+
+.menu-item {
+    -fx-background-color: transparent;
+    -fx-background-radius: 5px;
+    -fx-padding: 8px 12px;
+}
+
+.menu-item .label {
+    -fx-text-fill: #d8dee9;
+}
+
+.menu-item:focused {
+    -fx-background-color: #2a3850;
+}
+
+.menu-item:focused .label {
+    -fx-text-fill: #f4f6fa;
+}
+
+.menu-item:disabled .label {
+    -fx-text-fill: #7f8998;
+}
+
+.separator-menu-item .line {
+    -fx-border-color: #343b47;
+    -fx-border-width: 1 0 0 0;
+}
+
+#commitButton {
+    -fx-background-color: #3478f6;
+    -fx-text-fill: white;
+}
+
+#commitButton:hover {
+    -fx-background-color: #4a89ff;
+}
+
+.quick-actions {
+    -fx-spacing: 2px;
+}
+
+.quick-action-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 7px;
+    -fx-padding: 4px 5px;
+    -fx-min-width: 42px;
+    -fx-pref-width: 46px;
+    -fx-min-height: 42px;
+    -fx-font-weight: normal;
+}
+
+.quick-action-button:hover {
+    -fx-background-color: rgba(120, 150, 205, 0.15);
+}
+
+.quick-action-button:pressed {
+    -fx-background-color: rgba(120, 150, 205, 0.25);
+}
+
+.quick-action-icon {
+    -fx-text-fill: #e3ebf8;
+    -fx-font-family: "Segoe UI Symbol", "Segoe UI";
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+}
+
+.quick-action-title {
+    -fx-text-fill: #cbd5e4;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+}
+
+.quick-action-button:hover .quick-action-icon,
+.quick-action-button:hover .quick-action-title {
+    -fx-text-fill: #f2f5fa;
+}
+
+.quick-action-button:disabled {
+    -fx-opacity: 0.38;
+}
+
+.login-page {
+    -fx-background-color: linear-gradient(to bottom right, #111722, #101319 60%, #151b26);
+    -fx-padding: 32px;
+}
+
+.login-card {
+    -fx-background-color: #191f2a;
+    -fx-background-radius: 14px;
+    -fx-border-color: #303a49;
+    -fx-border-radius: 14px;
+    -fx-padding: 34px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.38), 28, 0.16, 0, 10);
+}
+
+.login-brand-mark {
+    -fx-alignment: center;
+    -fx-min-width: 42px;
+    -fx-min-height: 42px;
+    -fx-background-color: linear-gradient(to bottom right, #5b91ff, #3468d7);
+    -fx-background-radius: 11px;
+    -fx-text-fill: white;
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+}
+
+.login-brand-name {
+    -fx-text-fill: #cbd5e4;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.login-heading {
+    -fx-text-fill: #f2f5fa;
+    -fx-font-size: 25px;
+    -fx-font-weight: bold;
+}
+
+.login-description {
+    -fx-text-fill: #aab5c5;
+    -fx-font-size: 13px;
+    -fx-line-spacing: 3px;
+}
+
+.login-field-label {
+    -fx-text-fill: #d7deea;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.login-input {
+    -fx-background-color: #111620;
+    -fx-control-inner-background: #111620;
+    -fx-text-fill: #edf2f8;
+    -fx-prompt-text-fill: #798597;
+    -fx-border-color: #343e4e;
+    -fx-border-radius: 7px;
+    -fx-background-radius: 7px;
+    -fx-padding: 10px 12px;
+}
+
+.login-input:focused {
+    -fx-border-color: #668df2;
+}
+
+.login-input .list-cell {
+    -fx-background-color: #111620;
+    -fx-text-fill: #edf2f8;
+}
+
+.login-link {
+    -fx-border-color: transparent;
+    -fx-padding: 0;
+    -fx-text-fill: #8cb2ff;
+    -fx-underline: false;
+}
+
+.login-link:hover {
+    -fx-text-fill: #b1cbff;
+    -fx-underline: true;
+}
+
+.login-status {
+    -fx-text-fill: #9ba8ba;
+    -fx-font-size: 11px;
+}
+
+.login-status-error {
+    -fx-text-fill: #f08b94;
+}
+
+.login-submit {
+    -fx-background-color: #3979f6;
+    -fx-background-radius: 7px;
+    -fx-padding: 11px 16px;
+    -fx-text-fill: white;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.login-submit:hover {
+    -fx-background-color: #5189fb;
+}
+
+.login-submit:disabled {
+    -fx-opacity: 0.55;
+}
+
+.search-field,
+.gitdesk-dialog .search-field {
+    -fx-background-color: #121720;
+    -fx-control-inner-background: #121720;
+    -fx-text-fill: #e8edf5;
+    -fx-prompt-text-fill: #808a9a;
+    -fx-border-color: #303a49;
+    -fx-border-radius: 7px;
+    -fx-background-radius: 7px;
+    -fx-background-insets: 0;
+    -fx-padding: 9px 12px;
+}
+
+.search-field:focused,
+.gitdesk-dialog .search-field:focused {
+    -fx-border-color: #668df2;
+    -fx-background-color: #151b26;
+    -fx-control-inner-background: #151b26;
+}
+
+.scroll-bar:vertical,
+.scroll-bar:horizontal {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 2px;
+}
+
+.scroll-bar:vertical {
+    -fx-pref-width: 9px;
+}
+
+.scroll-bar:horizontal {
+    -fx-pref-height: 9px;
+}
+
+.scroll-bar .track,
+.scroll-bar .track-background {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8px;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: rgba(164, 178, 199, 0.25);
+    -fx-background-insets: 1px;
+    -fx-background-radius: 8px;
+}
+
+.scroll-bar:hover .thumb {
+    -fx-background-color: rgba(174, 191, 216, 0.48);
+}
+
+.scroll-bar .thumb:pressed {
+    -fx-background-color: rgba(116, 157, 245, 0.72);
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.scroll-bar .increment-arrow,
+.scroll-bar .decrement-arrow {
+    -fx-padding: 0;
+    -fx-shape: "";
+}
+
+.corner {
+    -fx-background-color: transparent;
+}
+
+.gitdesk-dialog {
+    -fx-background-color: #171b24;
+    -fx-border-color: #343c49;
+    -fx-border-radius: 10px;
+    -fx-background-radius: 10px;
+    -fx-padding: 0;
+}
+
+.gitdesk-dialog .header-panel {
+    -fx-background-color: #1c222d;
+    -fx-background-radius: 10px 10px 0 0;
+    -fx-padding: 20px 22px 15px;
+}
+
+.gitdesk-dialog .header-panel .label {
+    -fx-text-fill: #f0f3f8;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.gitdesk-dialog > .content {
+    -fx-background-color: #171b24;
+    -fx-padding: 18px 22px;
+}
+
+.gitdesk-dialog .label {
+    -fx-text-fill: #c1c8d4;
+}
+
+.gitdesk-dialog .text-field,
+.gitdesk-dialog .password-field,
+.gitdesk-dialog .text-area,
+.gitdesk-dialog .choice-box,
+.gitdesk-dialog .combo-box-base {
+    -fx-background-color: #10141b;
+    -fx-control-inner-background: #10141b;
+    -fx-text-fill: #edf1f7;
+    -fx-prompt-text-fill: #778294;
+    -fx-border-color: #343d4b;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-padding: 8px 10px;
+}
+
+.gitdesk-dialog .button-bar {
+    -fx-background-color: #151920;
+    -fx-background-radius: 0 0 10px 10px;
+    -fx-padding: 12px 20px 16px;
+}
+
+.gitdesk-dialog .button {
+    -fx-background-radius: 6px;
+    -fx-padding: 8px 18px;
+    -fx-font-size: 12px;
+}
+
+.gitdesk-dialog .button:default {
+    -fx-background-color: #4c78e8;
+    -fx-text-fill: white;
+}
+
+.gitdesk-dialog .button:default:hover {
+    -fx-background-color: #6089f3;
+}
+
+.gitdesk-dialog .button:cancel {
+    -fx-background-color: #2a303b;
+    -fx-text-fill: #e0e5ee;
+}
+
+.gitdesk-dialog .button:cancel:hover {
+    -fx-background-color: #394251;
+}

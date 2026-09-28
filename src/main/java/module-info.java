@@ -6,5 +6,8 @@ module com.git.client {
     requires java.logging;
     requires java.net.http;
     exports com.git.client;
+    exports com.git.client.ui;
+    exports com.git.client.git;
+    exports com.git.client.platform;
 
 }
