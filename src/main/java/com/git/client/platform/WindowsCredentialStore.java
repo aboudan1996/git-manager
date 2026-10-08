@@ -1,16 +1,14 @@
 package com.git.client.platform;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.HexFormat;
-import java.util.Locale;
-import java.util.List;
+import java.util.*;
 
 /** Stores Git credentials in the current Windows user's Credential Manager. */
 public final class WindowsCredentialStore {
@@ -178,8 +176,11 @@ public final class WindowsCredentialStore {
     private String invoke(String request) throws IOException {
         String encodedScript = Base64.getEncoder().encodeToString(
                 POWERSHELL_SCRIPT.getBytes(StandardCharsets.UTF_16LE));
-        Process process = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive",
-                "-EncodedCommand", encodedScript).redirectErrorStream(true).start();
+        Path powershell = findPowerShell();
+        Process process = new ProcessBuilder(powershell.toString(),
+                "-NoProfile", "-NonInteractive", "-EncodedCommand", encodedScript)
+                .redirectErrorStream(true)
+                .start();
         try (OutputStream input = process.getOutputStream()) {
             input.write((request + System.lineSeparator()).getBytes(StandardCharsets.UTF_8));
         }
@@ -206,5 +207,42 @@ public final class WindowsCredentialStore {
     }
 
     public record StoredCredentials(String username, char[] secret) {
+    }
+
+    private Path findPowerShell() throws IOException {
+        String executable = "powershell.exe";
+        LinkedHashSet<Path> candidates = new LinkedHashSet<>();
+
+        String windowsRoot = System.getenv("SystemRoot");
+        if (windowsRoot == null || windowsRoot.isBlank()) {
+            windowsRoot = System.getenv("WINDIR");
+        }
+
+        if (windowsRoot != null && !windowsRoot.isBlank()) {
+            Path windows = Path.of(windowsRoot);
+
+            // Sysnative permet à une application 32 bits d'accéder aux exécutables 64 bits.
+            candidates.add(windows.resolve("Sysnative")
+                    .resolve("WindowsPowerShell").resolve("v1.0").resolve(executable));
+            candidates.add(windows.resolve("System32")
+                    .resolve("WindowsPowerShell").resolve("v1.0").resolve(executable));
+        }
+
+        String path = System.getenv("PATH");
+        if (path != null && !path.isBlank()) {
+            for (String directory : path.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+                if (!directory.isBlank()) {
+                    candidates.add(Path.of(directory).resolve(executable));
+                }
+            }
+        }
+
+        return candidates.stream()
+                .filter(Files::isRegularFile)
+                .map(Path::toAbsolutePath)
+                .map(Path::normalize)
+                .findFirst()
+                .orElseThrow(() -> new IOException(
+                        "Windows PowerShell est introuvable. Vérifiez son installation ou le PATH."));
     }
 }

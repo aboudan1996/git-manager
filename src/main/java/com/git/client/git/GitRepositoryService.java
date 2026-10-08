@@ -1,6 +1,5 @@
 package com.git.client.git;
 
-import com.git.client.platform.GitAccountService;
 import com.git.client.platform.WindowsCredentialStore;
 
 import org.eclipse.jgit.api.Git;
@@ -164,14 +163,8 @@ public final class GitRepositoryService implements RepositoryOperations {
         if (account == null) return;
         char[] token = account.token();
         try {
-            GitAccountService.Provider provider;
-            try {
-                provider = GitAccountService.Provider.fromId(account.providerId());
-            } catch (IOException exception) {
-                throw new IllegalArgumentException("Unsupported Git account provider.", exception);
-            }
             accountCredentialsProvider = new AccountCredentialsProvider(
-                    provider, account.username(), token, credentialsProvider);
+                    account, account.username(), token, credentialsProvider);
         } finally {
             java.util.Arrays.fill(token, '\0');
         }
@@ -665,14 +658,14 @@ public final class GitRepositoryService implements RepositoryOperations {
     }
 
     private static final class AccountCredentialsProvider extends CredentialsProvider {
-        private final GitAccountService.Provider provider;
+        private final GitCredentials account;
         private final String username;
         private final char[] token;
         private final CredentialsProvider fallback;
 
-        private AccountCredentialsProvider(GitAccountService.Provider provider, String username,
+        private AccountCredentialsProvider(GitCredentials account, String username,
                                           char[] token, CredentialsProvider fallback) {
-            this.provider = provider;
+            this.account = account;
             this.username = username;
             this.token = token.clone();
             this.fallback = fallback;
@@ -699,7 +692,8 @@ public final class GitRepositoryService implements RepositoryOperations {
         @Override
         public boolean get(URIish uri, CredentialItem... items)
                 throws UnsupportedCredentialItem {
-            if (uri != null && provider.supportsHost(uri.getHost())) {
+            if (uri != null && "https".equalsIgnoreCase(uri.getScheme())
+                    && account.supportsHost(uri.getHost(), uri.getPort())) {
                 if (supportsAccountItems(items)) {
                     for (CredentialItem item : items) {
                         if (item instanceof CredentialItem.Username usernameItem) {

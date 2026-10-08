@@ -30,6 +30,7 @@ import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tab;
+import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.layout.BorderPane;
@@ -89,6 +90,7 @@ public class GitPilotApplication extends Application {
     private HBox toolbar;
     private Node loginView;
     private ComboBox<GitAccountService.Provider> loginProvider;
+    private TextField loginInstanceUrl;
     private PasswordField loginToken;
     private Button loginButton;
     private Label loginStatus;
@@ -186,9 +188,20 @@ public class GitPilotApplication extends Application {
         });
         loginProvider.getStyleClass().add("login-input");
         loginProvider.setMaxWidth(Double.MAX_VALUE);
+        loginInstanceUrl = new TextField(GitAccountService.Provider.GITHUB.defaultInstanceUrl());
+        loginInstanceUrl.getStyleClass().add("login-input");
+        loginInstanceUrl.setMaxWidth(Double.MAX_VALUE);
+        loginProvider.valueProperty().addListener((observable, oldProvider, provider) -> {
+            if (provider != null) {
+                loginInstanceUrl.setText(provider.defaultInstanceUrl());
+                loginInstanceUrl.setPromptText(provider.defaultInstanceUrl());
+            }
+        });
 
         Label providerLabel = new Label("Git provider");
         providerLabel.getStyleClass().add("login-field-label");
+        Label instanceUrlLabel = new Label("Provider URL");
+        instanceUrlLabel.getStyleClass().add("login-field-label");
         loginToken = new PasswordField();
         loginToken.setPromptText("Paste your personal access token");
         loginToken.getStyleClass().add("login-input");
@@ -199,9 +212,10 @@ public class GitPilotApplication extends Application {
         tokenHelp.getStyleClass().add("login-link");
         tokenHelp.setOnAction(event -> {
             GitAccountService.Provider selected = loginProvider.getValue();
-            String url = selected == GitAccountService.Provider.GITLAB
-                    ? "https://gitlab.com/-/user_settings/personal_access_tokens"
-                    : "https://github.com/settings/personal-access-tokens";
+            String url = loginInstanceUrl.getText().trim()
+                    + (selected == GitAccountService.Provider.GITLAB
+                    ? "/-/user_settings/personal_access_tokens"
+                    : "/settings/personal-access-tokens");
             getHostServices().showDocument(url);
         });
         loginStatus = new Label("Your token is validated with the selected provider.");
@@ -218,12 +232,15 @@ public class GitPilotApplication extends Application {
         loginButton.setOnAction(event -> submitLogin());
         loginToken.setOnAction(event -> submitLogin());
         loginToken.textProperty().addListener((observable, old, value) ->
-                loginButton.setDisable(value == null || value.isBlank()));
+                updateLoginButtonState());
+        loginInstanceUrl.textProperty().addListener((observable, old, value) ->
+                updateLoginButtonState());
         loginButton.setDisable(true);
 
         HBox statusRow = new HBox(9, loginSpinner, loginStatus);
         statusRow.setAlignment(Pos.CENTER_LEFT);
-        VBox fields = new VBox(9, providerLabel, loginProvider, tokenLabel, loginToken);
+        VBox fields = new VBox(9, providerLabel, loginProvider, instanceUrlLabel,
+                loginInstanceUrl, tokenLabel, loginToken);
         VBox.setMargin(tokenHelp, new Insets(0, 0, 3, 0));
         VBox card = new VBox(18, brand, heading, description, fields, tokenHelp,
                 statusRow, loginButton);
@@ -277,6 +294,7 @@ public class GitPilotApplication extends Application {
     private void submitLogin() {
         if (loginButton.isDisabled() || loginProvider.getValue() == null) return;
         GitAccountService.Provider provider = loginProvider.getValue();
+        String instanceUrl = loginInstanceUrl.getText();
         logService.event(ApplicationEvent.SIGN_IN_STARTED, provider.displayName());
         char[] token = loginToken.getText().toCharArray();
         loginToken.clear();
@@ -288,7 +306,7 @@ public class GitPilotApplication extends Application {
         Task<GitAccountService.Account> task = new Task<>() {
             @Override protected GitAccountService.Account call() throws Exception {
                 try {
-                    return accountService.signIn(provider, token);
+                    return accountService.signIn(provider, instanceUrl, token);
                 } finally {
                     java.util.Arrays.fill(token, '\0');
                 }
@@ -305,7 +323,7 @@ public class GitPilotApplication extends Application {
             loginSpinner.setManaged(false);
             loginStatus.getStyleClass().setAll("login-status", "login-status-error");
             loginStatus.setText(errorMessage(task.getException()));
-            loginButton.setDisable(loginToken.getText().isBlank());
+            updateLoginButtonState();
         });
         Thread worker = new Thread(task, "git-account-login");
         worker.setDaemon(true);
@@ -323,7 +341,8 @@ public class GitPilotApplication extends Application {
                 ? "Saved securely on this Windows account."
                 : "Available for this session only.";
         accountButton.setTooltip(new Tooltip("Signed in to " + account.provider().displayName()
-                + " as " + account.username() + ". " + sessionStorage));
+                + " (" + account.instanceUrl() + ") as " + account.username()
+                + ". " + sessionStorage));
         accountButton.setVisible(true);
         accountButton.setManaged(true);
         loginSpinner.setVisible(false);
@@ -350,7 +369,12 @@ public class GitPilotApplication extends Application {
         loginSpinner.setManaged(false);
         loginStatus.getStyleClass().setAll("login-status");
         loginStatus.setText(message);
-        loginButton.setDisable(loginToken.getText().isBlank());
+        updateLoginButtonState();
+    }
+
+    private void updateLoginButtonState() {
+        loginButton.setDisable(loginToken.getText().isBlank()
+                || loginInstanceUrl.getText().isBlank());
     }
 
     private void signOut() {

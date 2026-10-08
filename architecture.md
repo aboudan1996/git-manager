@@ -203,10 +203,17 @@ nécessaires au lancement JavaFX et aux points d'extension documentés.
 ### Comptes GitHub/GitLab
 
 - **`GitAccountService` (`platform`)** : valide un Personal Access Token en appelant le point d'API utilisateur
-  GitHub ou GitLab avec `HttpClient`. Il identifie le nom de compte, restaure/vérifie une session
-  sauvegardée et demande la suppression des identifiants à la déconnexion.
-- **`GitAccountService.Account`** : contient le fournisseur, le nom du compte et une copie du token;
-  `close()` efface le tableau de caractères.
+  GitHub ou GitLab avec `HttpClient`. L'URL d'instance HTTPS est éditable (valeurs initiales
+  `https://github.com` et `https://gitlab.com`); les instances GitHub Enterprise utilisent
+  `/api/v3/user` et GitLab `/api/v4/user`. Le service identifie le compte, restaure/vérifie une session
+  sauvegardée et supprime les identifiants à la déconnexion.
+- **`GitAccountService.Account`** : contient le fournisseur, l'URL de l'instance, le nom du compte et une
+  copie du token; `close()` efface le tableau de caractères. L'URL et le fournisseur sont enregistrés
+  avec le secret dans Windows Credential Manager. Les entrées historiques sans URL sont restaurées
+  avec l'instance publique par défaut.
+- **`GitCredentials.supportsHost`** : limite la remise du token aux URL distantes HTTPS dont l'hôte
+  correspond exactement à l'instance authentifiée; les identifiants ne sont pas transmis à d'autres
+  hôtes ni à des connexions HTTP en clair.
 - Le compte GitHub/GitLab sert à l'authentification API et aux opérations distantes. **L'identité
   d'auteur d'un commit est distincte** : `GitRepositoryService.commit` lit `user.name` et
   `user.email` dans la configuration Git du dépôt.
@@ -379,7 +386,8 @@ Maven. Le script `package-windows.ps1` construit les installateurs Windows (EXE 
   `ApplicationLogger`, puis substituer l'implémentation à la racine de composition.
 - Ajouter une lecture de diff : placer la logique dans `GitDiffHistoryService` et l'exposer si
   nécessaire par `GitRepositoryService`.
-- Ajouter une ressource : la placer dans `src/main/resources/com/git/client` et la charger via le
-  classpath.
+- Ajouter une ressource : placer la feuille de style JavaFX dans
+  `src/main/resources/com/git/client/ui` (package de `GitPilotApplication`) et l'icône dans
+  `src/main/resources/com/git/client`; les charger depuis le classpath avec leur chemin adapté.
 - Conserver les appels JGit hors des vues : les vues émettent des intentions via callbacks; le
   coordinateur choisit le service du dépôt actif.

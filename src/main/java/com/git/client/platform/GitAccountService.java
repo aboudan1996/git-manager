@@ -4,6 +4,7 @@ import com.git.client.git.GitCredentials;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -32,32 +33,35 @@ public final class GitAccountService {
         WindowsCredentialStore.StoredCredentials stored = credentialStore.load(CREDENTIAL_TARGET);
         if (stored == null) return null;
         try {
-            int separator = stored.username().indexOf('|');
-            if (separator <= 0 || separator == stored.username().length() - 1) {
+            String[] fields = stored.username().split("\\|", 3);
+            if (fields.length < 2 || fields[0].isBlank() || fields[1].isBlank()) {
                 credentialStore.delete(CREDENTIAL_TARGET);
                 return null;
             }
-            Provider provider = Provider.fromId(stored.username().substring(0, separator));
-            String username = stored.username().substring(separator + 1);
-            return new Account(provider, username, stored.secret());
+            Provider provider = Provider.fromId(fields[0]);
+            String instanceUrl = fields.length == 3 ? fields[2] : provider.defaultInstanceUrl();
+            return new Account(provider, fields[1], validateInstanceUrl(instanceUrl), stored.secret());
         } finally {
             Arrays.fill(stored.secret(), '\0');
         }
     }
 
-    public Account signIn(Provider provider, char[] token) throws IOException, InterruptedException {
-        String username = verify(provider, token);
+    public Account signIn(Provider provider, String instanceUrl, char[] token)
+            throws IOException, InterruptedException {
+        String validatedUrl = validateInstanceUrl(instanceUrl);
+        String username = verify(provider, validatedUrl, token);
         if (credentialStore.isSupported()) {
-            credentialStore.save(CREDENTIAL_TARGET, provider.id() + "|" + username, token);
+            credentialStore.save(CREDENTIAL_TARGET,
+                    provider.id() + "|" + username + "|" + validatedUrl, token);
         }
-        return new Account(provider, username, token);
+        return new Account(provider, username, validatedUrl, token);
     }
 
     public Account verifyStored(Account stored) throws IOException, InterruptedException {
         char[] token = stored.token();
         try {
-            String verifiedUsername = verify(stored.provider(), token);
-            return new Account(stored.provider(), verifiedUsername, token);
+            String verifiedUsername = verify(stored.provider(), stored.instanceUrl(), token);
+            return new Account(stored.provider(), verifiedUsername, stored.instanceUrl(), token);
         } finally {
             Arrays.fill(token, '\0');
         }
@@ -71,11 +75,35 @@ public final class GitAccountService {
         if (credentialStore.isSupported()) credentialStore.delete(CREDENTIAL_TARGET);
     }
 
-    private String verify(Provider provider, char[] token) throws IOException, InterruptedException {
+    public static String validateInstanceUrl(String instanceUrl) throws IOException {
+        if (instanceUrl == null || instanceUrl.isBlank()) {
+            throw new IOException("Enter the base URL of your Git provider.");
+        }
+        try {
+            URI uri = new URI(instanceUrl.trim()).normalize();
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
+                    || uri.getUserInfo() != null || uri.getQuery() != null
+                    || uri.getFragment() != null) {
+                throw new IOException("The provider URL must be an HTTPS base URL without "
+                        + "credentials, query parameters, or a fragment.");
+            }
+            String normalized = uri.toASCIIString();
+            while (normalized.endsWith("/")) {
+                normalized = normalized.substring(0, normalized.length() - 1);
+            }
+            return normalized;
+        } catch (URISyntaxException exception) {
+            throw new IOException("Enter a valid HTTPS provider URL.", exception);
+        }
+    }
+
+    private String verify(Provider provider, String instanceUrl, char[] token)
+            throws IOException, InterruptedException {
         if (provider == null || token == null || token.length == 0) {
             throw new IllegalArgumentException("Choose a provider and enter a personal access token.");
         }
-        HttpRequest.Builder request = HttpRequest.newBuilder(provider.userEndpoint())
+        URI userEndpoint = provider.userEndpoint(instanceUrl);
+        HttpRequest.Builder request = HttpRequest.newBuilder(userEndpoint)
                 .timeout(Duration.ofSeconds(20))
                 .header("Accept", "application/json")
                 .header("User-Agent", "GitPilot");
@@ -108,22 +136,31 @@ public final class GitAccountService {
     }
 
     public enum Provider {
-        GITHUB("github", "GitHub", URI.create("https://api.github.com/user")),
-        GITLAB("gitlab", "GitLab", URI.create("https://gitlab.com/api/v4/user"));
+        GITHUB("github", "GitHub", "https://github.com"),
+        GITLAB("gitlab", "GitLab", "https://gitlab.com");
 
         private final String id;
         private final String displayName;
-        private final URI userEndpoint;
+        private final String defaultInstanceUrl;
 
-        Provider(String id, String displayName, URI userEndpoint) {
+        Provider(String id, String displayName, String defaultInstanceUrl) {
             this.id = id;
             this.displayName = displayName;
-            this.userEndpoint = userEndpoint;
+            this.defaultInstanceUrl = defaultInstanceUrl;
         }
 
         public String id() { return id; }
         public String displayName() { return displayName; }
-        URI userEndpoint() { return userEndpoint; }
+        public String defaultInstanceUrl() { return defaultInstanceUrl; }
+
+        URI userEndpoint(String instanceUrl) throws IOException {
+            String base = validateInstanceUrl(instanceUrl);
+            if (this == GITHUB && base.equalsIgnoreCase("https://github.com")) {
+                return URI.create("https://api.github.com/user");
+            }
+            String apiPath = this == GITHUB ? "/api/v3/user" : "/api/v4/user";
+            return URI.create(base + apiPath);
+        }
 
         public boolean supportsHost(String host) {
             return host != null && switch (this) {
@@ -148,15 +185,30 @@ public final class GitAccountService {
         private final char[] token;
 
         public Account(Provider provider, String username, char[] token) {
+            this(provider, username, provider.defaultInstanceUrl(), token);
+        }
+
+        public Account(Provider provider, String username, String instanceUrl, char[] token) {
             this.provider = provider;
             this.username = username;
+            this.instanceUrl = instanceUrl;
             this.token = token.clone();
         }
 
+        private final String instanceUrl;
+
         public Provider provider() { return provider; }
-        @Override public String providerId() { return provider.id(); }
+        public String instanceUrl() { return instanceUrl; }
         @Override public String username() { return username; }
         @Override public char[] token() { return token.clone(); }
+        @Override public boolean supportsHost(String host) {
+            return host != null && host.equalsIgnoreCase(URI.create(instanceUrl).getHost());
+        }
+        @Override public boolean supportsHost(String host, int port) {
+            if (!supportsHost(host)) return false;
+            int instancePort = URI.create(instanceUrl).getPort();
+            return (port < 0 ? 443 : port) == (instancePort < 0 ? 443 : instancePort);
+        }
 
         @Override public void close() {
             Arrays.fill(token, '\0');
