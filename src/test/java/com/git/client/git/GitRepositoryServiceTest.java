@@ -519,7 +519,6 @@ class GitRepositoryServiceTest {
             git.commit().setMessage("Base").call();
         }
 
-
         try (GitRepositoryService service = GitRepositoryService.open(directory)) {
             service.createBranch("feature/merge");
             Files.writeString(directory.resolve("merge.txt"), "merged");
