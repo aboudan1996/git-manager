@@ -99,20 +99,20 @@ public class GitPilotApplication extends Application {
     private RepositoryChangeMonitor worktreeWatcher;
 
     /** Default constructor required by the JavaFX application launcher. */
-    public GitPilotApplication() {
+    public GitPilotApplication() throws Exception {
         this(new LogService(), new JGitRepositoryServiceFactory(),
                 new NioRepositoryChangeMonitorFactory());
     }
 
     /** Constructor injection keeps infrastructure implementations replaceable in tests/deployments. */
     GitPilotApplication(ApplicationLogger logService, RepositoryServiceFactory repositoryServiceFactory,
-                        RepositoryChangeMonitorFactory changeMonitorFactory) {
+                        RepositoryChangeMonitorFactory changeMonitorFactory) throws Exception {
         this.logService = Objects.requireNonNull(logService);
         this.repositoryServiceFactory = Objects.requireNonNull(repositoryServiceFactory);
         this.changeMonitorFactory = Objects.requireNonNull(changeMonitorFactory);
         this.recentStore = new RecentRepositoryStore();
         this.repositoryTabs = new RepositoryTabManager();
-        this.accountService = new GitAccountService();
+        this.accountService = new GitAccountService(true, true);
     }
 
     @Override
@@ -535,9 +535,9 @@ public class GitPilotApplication extends Application {
         branchContextMenu.setOnShowing(event ->
                 logService.event(ApplicationEvent.BRANCH_MENU_OPENED, "Branch actions"));
         branchLabel.setContextMenu(branchContextMenu);
-        openRepositoryButton = new Button("Open repository");
-        openRepositoryButton.getStyleClass().add("secondary-button");
-        openRepositoryButton.setOnAction(event -> chooseRepository());
+//        openRepositoryButton = new Button("Open repository");
+//        openRepositoryButton.getStyleClass().add("secondary-button");
+//        openRepositoryButton.setOnAction(event -> chooseRepository());
         Button addRepositoryButton = createQuickAction(
                 "+",
                 "Repo",
@@ -594,7 +594,7 @@ public class GitPilotApplication extends Application {
         heading.setAlignment(Pos.CENTER_LEFT);
         HBox toolbar = new HBox(10, appName, heading, quickActions, spacer,
                 operationSpinner, branchLabel, menu, accountButton,
-                cloneRepositoryButton, openRepositoryButton, refreshButton);
+                cloneRepositoryButton, refreshButton);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.setPadding(new Insets(16, 22, 16, 22));
         toolbar.getStyleClass().add("toolbar");
@@ -1124,7 +1124,7 @@ public class GitPilotApplication extends Application {
         operationSpinner.setVisible(operationRunning);
         operationSpinner.setManaged(operationRunning);
         actionsButton.setDisable(operationRunning || actionsMenuBusy);
-        openRepositoryButton.setDisable(operationRunning);
+        // openRepositoryButton.setDisable(operationRunning);
         cloneRepositoryButton.setDisable(operationRunning);
         refreshButton.setDisable(!hasRepository || operationRunning);
         branchLabel.setDisable(!hasRepository || operationRunning);
