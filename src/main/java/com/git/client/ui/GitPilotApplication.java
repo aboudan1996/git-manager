@@ -861,7 +861,7 @@ public class GitPilotApplication extends Application {
 
     private void activateRepositoryTab(Tab tab) {
         if (tab == null) {
-            logService.event(ApplicationEvent.REPOSITORY_SELECTED, "test");
+            logService.event(ApplicationEvent.REPOSITORY_SELECTED, "x-y");
             stopWorktreeWatcher();
             repositoryService = null;
             repositoryLabel.setText("No repository open");
