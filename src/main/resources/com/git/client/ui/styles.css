@@ -681,3 +681,53 @@
 .gitdesk-dialog .button:cancel:hover {
     -fx-background-color: #394251;
 }
+
+.gitdesk-dialog .header-panel {
+    -fx-background-color: #1c222d;
+    -fx-background-radius: 10px 10px 0 0;
+    -fx-padding: 0;
+}
+
+.gitdesk-dialog .dialog-header {
+    -fx-background-color: #1c222d;
+    -fx-background-radius: 10px 10px 0 0;
+}
+
+.gitdesk-dialog .dialog-title-bar {
+    -fx-background-color: transparent;
+    -fx-padding: 7px 8px 7px 16px;
+    -fx-min-height: 38px;
+}
+
+.gitdesk-dialog .dialog-title {
+    -fx-text-fill: #f0f3f8;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.gitdesk-dialog .dialog-header > .label {
+    -fx-text-fill: #c1c8d4;
+    -fx-padding: 4px 20px 14px;
+}
+
+.gitdesk-dialog .dialog-close-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4px;
+    -fx-padding: 0;
+    -fx-min-width: 28px;
+    -fx-pref-width: 28px;
+    -fx-min-height: 26px;
+}
+
+.gitdesk-dialog .dialog-close-icon {
+    -fx-icon-color: #9aa5b5;
+    -fx-icon-size: 11px;
+}
+
+.gitdesk-dialog .dialog-close-button:hover {
+    -fx-background-color: #c42b3a;
+}
+
+.gitdesk-dialog .dialog-close-button:hover .dialog-close-icon {
+    -fx-icon-color: white;
+}

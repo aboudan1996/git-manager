@@ -7,6 +7,58 @@
 
 .app-root {
     -fx-background-color: #101319;
+    -fx-border-color: #303846;
+    -fx-border-width: 1px;
+}
+
+.app-top {
+    -fx-background-color: #171b24;
+}
+
+.window-title-bar {
+    -fx-background-color: #11151c;
+    -fx-border-color: transparent transparent #292f3a transparent;
+    -fx-min-height: 34px;
+    -fx-pref-height: 34px;
+}
+
+.window-title {
+    -fx-text-fill: #aeb8c8;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+.window-control-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 4px;
+    -fx-padding: 0;
+    -fx-min-width: 34px;
+    -fx-pref-width: 34px;
+    -fx-max-width: 34px;
+    -fx-min-height: 26px;
+    -fx-pref-height: 26px;
+    -fx-max-height: 26px;
+}
+
+.window-control-icon {
+    -fx-icon-color: #9aa5b5;
+    -fx-icon-size: 11px;
+}
+
+.window-control-button:hover {
+    -fx-background-color: #2a303b;
+}
+
+.window-control-button:hover .window-control-icon {
+    -fx-icon-color: #f2f5fa;
+}
+
+.window-close-button:hover {
+    -fx-background-color: #c42b3a;
+}
+
+.window-close-button:hover .window-control-icon {
+    -fx-icon-color: white;
 }
 
 .toolbar {

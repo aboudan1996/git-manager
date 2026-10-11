@@ -33,7 +33,9 @@ import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.Cursor;
 import javafx.scene.image.Image;
+import javafx.scene.input.MouseButton;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -44,6 +46,7 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 import javafx.util.StringConverter;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.kordamp.ikonli.javafx.FontIcon;
@@ -83,6 +86,11 @@ public class GitPilotApplication extends Application {
     private javafx.scene.control.Button cloneRepositoryButton;
     private javafx.scene.control.Button refreshButton;
     private ContextMenu branchContextMenu;
+    private VBox appTop;
+    private HBox windowTitleBar;
+    private FontIcon maximizeIcon;
+    private final double[] initialWindowSize = new double[2];
+    private Cursor activeResizeCursor = Cursor.DEFAULT;
     private boolean operationRunning;
     private boolean actionsMenuBusy;
     private String preferredRepositoryPath = "";
@@ -121,6 +129,7 @@ public class GitPilotApplication extends Application {
 
     @Override
     public void start(Stage stage) {
+        stage.initStyle(StageStyle.UNDECORATED);
         this.stage = stage;
         logService.event(ApplicationEvent.APPLICATION_STARTED, "GitPilot");
         logService.info("Application log file: " + logService.logFile().toAbsolutePath());
@@ -137,6 +146,11 @@ public class GitPilotApplication extends Application {
         root = new BorderPane();
         root.getStyleClass().add("app-root");
         toolbar = createToolbar();
+        windowTitleBar = createWindowTitleBar();
+        appTop = new VBox(windowTitleBar, toolbar);
+        appTop.getStyleClass().add("app-top");
+        setNodeVisible(toolbar, false);
+        root.setTop(appTop);
         workspaceNode = workspace().create();
         loginView = createLoginView();
         root.setCenter(loginView);
@@ -148,12 +162,14 @@ public class GitPilotApplication extends Application {
                 Objects.requireNonNull(
                         GitPilotApplication.class.getResource("/styles.css")
                 ).toExternalForm()
-        );        stage.setTitle("GitPilot");
+        );
+        stage.setTitle("GitPilot");
         stage.getIcons().add(new Image(
                 Objects.requireNonNull(GitPilotApplication.class.getResourceAsStream("/gitdesk_icon.png"))));
         stage.setMinWidth(Math.min(900, screenBounds.getWidth() * 0.8));
         stage.setMinHeight(Math.min(620, screenBounds.getHeight() * 0.75));
         stage.setScene(scene);
+        installResizeHandlers(scene);
         stage.show();
         stage.setX(screenBounds.getMinX() + (screenBounds.getWidth() - stage.getWidth()) / 2);
         stage.setY(screenBounds.getMinY() + (screenBounds.getHeight() - stage.getHeight()) / 2);
@@ -371,7 +387,7 @@ public class GitPilotApplication extends Application {
         accountButton.setManaged(true);
         loginSpinner.setVisible(false);
         loginSpinner.setManaged(false);
-        root.setTop(toolbar);
+        setNodeVisible(toolbar, true);
         root.setCenter(workspaceNode);
         workspace().setRepositoryAvailable(repositoryService != null);
         refreshRecentRepositoryList();
@@ -387,7 +403,7 @@ public class GitPilotApplication extends Application {
 
     private void showLogin(String message) {
         logService.event(ApplicationEvent.LOGIN_VIEW_SHOWN, "Authentication required");
-        root.setTop(null);
+        setNodeVisible(toolbar, false);
         root.setCenter(loginView);
         loginSpinner.setVisible(false);
         loginSpinner.setManaged(false);
@@ -451,8 +467,7 @@ public class GitPilotApplication extends Application {
                 runRepositoryAction("Unstage all changes", () -> repositoryService.unstageAll());
             }
             @Override public void discardAllChanges() {
-                runRepositoryAction("Discard all changes",
-                        () -> repositoryService.undoWorkingChanges());
+                runRepositoryAction("Discard all changes", () -> repositoryService.undoWorkingChanges());
             }
             @Override public void commit(String message) {
                 runRepositoryAction("Commit", () -> {
@@ -650,6 +665,157 @@ public class GitPilotApplication extends Application {
         toolbar.setPadding(new Insets(16, 22, 16, 22));
         toolbar.getStyleClass().add("toolbar");
         return toolbar;
+    }
+
+    private HBox createWindowTitleBar() {
+        Label title = new Label("GitPilot");
+        title.getStyleClass().add("window-title");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button minimize = windowButton(FontAwesomeSolid.MINUS, "Minimize");
+        minimize.setOnAction(event -> stage.setIconified(true));
+
+        maximizeIcon = new FontIcon(FontAwesomeSolid.WINDOW_MAXIMIZE);
+        maximizeIcon.getStyleClass().add("window-control-icon");
+        Button maximize = new Button();
+        maximize.setGraphic(maximizeIcon);
+        maximize.setAccessibleText("Maximize");
+        maximize.setTooltip(new Tooltip("Maximize"));
+        maximize.getStyleClass().add("window-control-button");
+        maximize.setOnAction(event -> stage.setMaximized(!stage.isMaximized()));
+        stage.maximizedProperty().addListener((observable, wasMaximized, isMaximized) -> {
+            maximizeIcon.setIconCode(isMaximized
+                    ? FontAwesomeSolid.WINDOW_RESTORE : FontAwesomeSolid.WINDOW_MAXIMIZE);
+            maximize.setAccessibleText(isMaximized ? "Restore" : "Maximize");
+            maximize.setTooltip(new Tooltip(isMaximized ? "Restore" : "Maximize"));
+        });
+
+        Button close = windowButton(FontAwesomeSolid.TIMES, "Close");
+        close.getStyleClass().add("window-close-button");
+        close.setOnAction(event -> stage.close());
+
+        HBox titleBar = new HBox(8, title, spacer, minimize, maximize, close);
+        titleBar.setAlignment(Pos.CENTER_LEFT);
+        titleBar.setPadding(new Insets(0, 8, 0, 14));
+        titleBar.getStyleClass().add("window-title-bar");
+        double[] dragOffset = new double[2];
+        titleBar.setOnMousePressed(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && !stage.isMaximized()
+                    && activeResizeCursor == Cursor.DEFAULT && !isButtonTarget(event.getTarget())) {
+                dragOffset[0] = event.getScreenX() - stage.getX();
+                dragOffset[1] = event.getScreenY() - stage.getY();
+            }
+        });
+        titleBar.setOnMouseDragged(event -> {
+            if (event.isPrimaryButtonDown() && !stage.isMaximized()
+                    && activeResizeCursor == Cursor.DEFAULT && !isButtonTarget(event.getTarget())) {
+                stage.setX(event.getScreenX() - dragOffset[0]);
+                stage.setY(event.getScreenY() - dragOffset[1]);
+            }
+        });
+        titleBar.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2
+                    && !isButtonTarget(event.getTarget())) {
+                stage.setMaximized(!stage.isMaximized());
+            }
+        });
+        return titleBar;
+    }
+
+    private boolean isButtonTarget(Object target) {
+        Node node = target instanceof Node selected ? selected : null;
+        while (node != null) {
+            if (node instanceof Button) return true;
+            node = node.getParent();
+        }
+        return false;
+    }
+
+    private Button windowButton(FontAwesomeSolid iconCode, String accessibleText) {
+        FontIcon icon = new FontIcon(iconCode);
+        icon.getStyleClass().add("window-control-icon");
+        Button button = new Button();
+        button.setGraphic(icon);
+        button.setAccessibleText(accessibleText);
+        button.setTooltip(new Tooltip(accessibleText));
+        button.getStyleClass().add("window-control-button");
+        return button;
+    }
+
+    private void installResizeHandlers(Scene scene) {
+        double[] start = new double[4];
+        scene.setOnMouseMoved(event -> {
+            activeResizeCursor = stage.isMaximized() ? Cursor.DEFAULT
+                    : resizeCursorAt(event.getSceneX(), event.getSceneY(),
+                    scene.getWidth(), scene.getHeight());
+            scene.setCursor(activeResizeCursor);
+        });
+        scene.setOnMousePressed(event -> {
+            if (event.getButton() != MouseButton.PRIMARY || activeResizeCursor == Cursor.DEFAULT) return;
+            start[0] = event.getScreenX();
+            start[1] = event.getScreenY();
+            start[2] = stage.getX();
+            start[3] = stage.getY();
+            initialWindowSize[0] = stage.getWidth();
+            initialWindowSize[1] = stage.getHeight();
+        });
+        scene.setOnMouseDragged(event -> {
+            Cursor cursor = activeResizeCursor;
+            if (cursor == Cursor.DEFAULT || stage.isMaximized()
+                    || !event.isPrimaryButtonDown()) return;
+            double dx = event.getScreenX() - start[0];
+            double dy = event.getScreenY() - start[1];
+            boolean west = cursor == Cursor.W_RESIZE || cursor == Cursor.NW_RESIZE
+                    || cursor == Cursor.SW_RESIZE;
+            boolean east = cursor == Cursor.E_RESIZE || cursor == Cursor.NE_RESIZE
+                    || cursor == Cursor.SE_RESIZE;
+            boolean north = cursor == Cursor.N_RESIZE || cursor == Cursor.NW_RESIZE
+                    || cursor == Cursor.NE_RESIZE;
+            boolean south = cursor == Cursor.S_RESIZE || cursor == Cursor.SW_RESIZE
+                    || cursor == Cursor.SE_RESIZE;
+            double width = initialWindowSize[0];
+            double height = initialWindowSize[1];
+            double x = start[2];
+            double y = start[3];
+            if (west) {
+                width = Math.max(stage.getMinWidth(), initialWindowSize[0] - dx);
+                x = start[2] + initialWindowSize[0] - width;
+            } else if (east) {
+                width = Math.max(stage.getMinWidth(), initialWindowSize[0] + dx);
+            }
+            if (north) {
+                height = Math.max(stage.getMinHeight(), initialWindowSize[1] - dy);
+                y = start[3] + initialWindowSize[1] - height;
+            } else if (south) {
+                height = Math.max(stage.getMinHeight(), initialWindowSize[1] + dy);
+            }
+            stage.setX(x);
+            stage.setY(y);
+            stage.setWidth(width);
+            stage.setHeight(height);
+        });
+    }
+
+    private Cursor resizeCursorAt(double x, double y, double width, double height) {
+        boolean west = x < 5;
+        boolean east = x > width - 5;
+        boolean north = y < 5;
+        boolean south = y > height - 5;
+        if (north && west) return Cursor.NW_RESIZE;
+        if (north && east) return Cursor.NE_RESIZE;
+        if (south && west) return Cursor.SW_RESIZE;
+        if (south && east) return Cursor.SE_RESIZE;
+        if (north) return Cursor.N_RESIZE;
+        if (south) return Cursor.S_RESIZE;
+        if (west) return Cursor.W_RESIZE;
+        if (east) return Cursor.E_RESIZE;
+        return Cursor.DEFAULT;
+    }
+
+    private void setNodeVisible(Node node, boolean visible) {
+        node.setVisible(visible);
+        node.setManaged(visible);
     }
 
     private Button createQuickAction(
