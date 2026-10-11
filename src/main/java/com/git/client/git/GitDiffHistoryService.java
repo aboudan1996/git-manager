@@ -20,8 +20,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Handles repository diffs and bounded commit-history queries. */
@@ -199,18 +201,40 @@ final class GitDiffHistoryService {
     List<RepositoryOperations.CommitEntry> getHistory() throws IOException {
         List<RepositoryOperations.CommitEntry> commits = new ArrayList<>();
         ObjectId head = repository.resolve(Constants.HEAD);
-        if (head == null) {
-            return List.of();
-        }
+        List<org.eclipse.jgit.lib.Ref> branchRefs = new ArrayList<>();
+        branchRefs.addAll(repository.getRefDatabase().getRefsByPrefix(Constants.R_HEADS));
+        branchRefs.addAll(repository.getRefDatabase().getRefsByPrefix(Constants.R_REMOTES));
+        Map<String, List<String>> refsByCommit = new HashMap<>();
         try (RevWalk walk = new RevWalk(repository)) {
-            walk.markStart(walk.parseCommit(head));
+            List<RevCommit> starts = new ArrayList<>();
+            for (org.eclipse.jgit.lib.Ref ref : branchRefs) {
+                if (ref.isSymbolic()) continue;
+                ObjectId refObject = repository.resolve(ref.getName());
+                if (refObject == null) continue;
+                refsByCommit.computeIfAbsent(refObject.name(), ignored -> new ArrayList<>())
+                        .add(ref.getName().replaceFirst("^refs/(heads|remotes)/", ""));
+                starts.add(walk.parseCommit(refObject));
+            }
+            if (head != null) {
+                refsByCommit.computeIfAbsent(head.name(), ignored -> new ArrayList<>()).add("HEAD");
+                starts.add(walk.parseCommit(head));
+            }
+            if (starts.isEmpty()) return List.of();
+            walk.markStart(starts);
             for (RevCommit commit : walk) {
+                List<String> parents = java.util.Arrays.stream(commit.getParents())
+                        .map(RevCommit::getName)
+                        .toList();
+                List<String> refs = refsByCommit.getOrDefault(commit.getName(), List.of())
+                        .stream().distinct().sorted().toList();
                 commits.add(new RepositoryOperations.CommitEntry(
                         commit.getShortMessage(),
                         commit.getName().substring(0, 7),
                         commit.getAuthorIdent().getName(),
                         Instant.ofEpochSecond(commit.getCommitTime()),
-                        commit.getName()
+                        commit.getName(),
+                        parents,
+                        refs
                 ));
                 if (commits.size() == 100) break;
             }

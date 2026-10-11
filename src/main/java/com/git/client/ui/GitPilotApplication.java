@@ -55,6 +55,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -448,6 +449,10 @@ public class GitPilotApplication extends Application {
             }
             @Override public void unstageAll() {
                 runRepositoryAction("Unstage all changes", () -> repositoryService.unstageAll());
+            }
+            @Override public void discardAllChanges() {
+                runRepositoryAction("Discard all changes",
+                        () -> repositoryService.undoWorkingChanges());
             }
             @Override public void commit(String message) {
                 runRepositoryAction("Commit", () -> {
@@ -913,8 +918,12 @@ public class GitPilotApplication extends Application {
             branchLabel.getStyleClass().remove("muted-badge");
             branchLabel.setDisable(false);
             List<String> conflicts = repositoryService.getConflictPaths();
-            String status = state.unstaged().size() + " unstaged  ·  " + state.staged().size()
-                    + " staged  ·  " + conflicts.size() + " conflicts";
+            HashSet<String> changedPaths = new HashSet<>(state.unstaged());
+            changedPaths.addAll(state.staged());
+            changedPaths.addAll(conflicts);
+            String branch = state.branch() == null || state.branch().isBlank()
+                    ? "detached HEAD" : state.branch();
+            String status = changedPaths.size() + " changes on " + branch;
             workspace().updateRepository(state.unstaged(), state.staged(), conflicts,
                     repositoryService.getHistory(), repositoryService.getStashes(), status);
             logService.event(ApplicationEvent.REPOSITORY_REFRESHED,
@@ -1111,8 +1120,7 @@ public class GitPilotApplication extends Application {
         if (commit == null) { workspace().showWorkingChanges(); return; }
         if (repositoryService == null) return;
         try {
-            workspace().showCommit(commit, repositoryService.getCommitFiles(commit.objectId()),
-                    repositoryService.getCommitDiff(commit.objectId()));
+            workspace().showCommit(repositoryService.getCommitFiles(commit.objectId()));
         } catch (IOException exception) {
             logService.error("Could not load commit diff.", exception);
             workspace().renderDiff(exception.getMessage());
@@ -1134,8 +1142,7 @@ public class GitPilotApplication extends Application {
         if (stash == null) { workspace().showWorkingChanges(); return; }
         if (repositoryService == null) return;
         try {
-            workspace().showStash(stash, repositoryService.getStashFiles(stash.objectId()),
-                    repositoryService.getStashDiff(stash.objectId()));
+            workspace().showStash(repositoryService.getStashFiles(stash.objectId()));
         } catch (IOException exception) {
             logService.error("Could not load stash diff.", exception);
             workspace().renderDiff(exception.getMessage());

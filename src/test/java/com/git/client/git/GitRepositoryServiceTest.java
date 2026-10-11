@@ -89,6 +89,41 @@ class GitRepositoryServiceTest {
     }
 
     @Test
+    void historyIncludesBranchReferencesAndCommitParents() throws Exception {
+        Files.writeString(directory.resolve("history.txt"), "base");
+        try (Git git = Git.open(directory.toFile())) {
+            git.add().addFilepattern("history.txt").call();
+            git.commit().setMessage("Base commit").call();
+        }
+
+        try (GitRepositoryService service = GitRepositoryService.open(directory)) {
+            service.createBranch("feature/graph");
+            service.checkout("feature/graph");
+            Files.writeString(directory.resolve("history.txt"), "feature");
+            service.stageAll();
+            service.commit("Feature commit");
+            service.checkout("master");
+            Files.writeString(directory.resolve("history.txt"), "main");
+            service.stageAll();
+            service.commit("Main commit");
+
+            List<RepositoryOperations.CommitEntry> history = service.getHistory();
+            RepositoryOperations.CommitEntry feature = history.stream()
+                    .filter(commit -> commit.message().equals("Feature commit"))
+                    .findFirst().orElseThrow();
+            RepositoryOperations.CommitEntry main = history.stream()
+                    .filter(commit -> commit.message().equals("Main commit"))
+                    .findFirst().orElseThrow();
+
+            assertTrue(feature.refs().contains("feature/graph"));
+            assertTrue(main.refs().contains("master"));
+            assertTrue(main.refs().contains("HEAD"));
+            assertEquals(1, feature.parentIds().size());
+            assertEquals(1, main.parentIds().size());
+        }
+    }
+
+    @Test
     void stagesUnstagesAndCommitsChanges() throws Exception {
         Path readme = directory.resolve("README.md");
         Files.writeString(readme, "GitDesk");

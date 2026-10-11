@@ -142,13 +142,16 @@ nécessaires au lancement JavaFX et aux points d'extension documentés.
 
 ### Interface
 
-- **`RepositoryWorkspaceView`** (`ui`) : construit l'espace de travail JavaFX : historique des commits,
-  stashs, recherche, modifications staged/unstaged, conflits, diff et commit. Sa petite interface
-  `Actions` transmet les interactions à `GitPilotApplication`, évitant de rendre cette vue
-  propriétaire du service Git.
+- **`RepositoryWorkspaceView`** (`ui`) : construit l'espace de travail JavaFX : graph de commits dans la
+  zone centrale quand aucun fichier n'est sélectionné, diff à la sélection d'un fichier, changements
+  empilés à droite, stashs et commit. Sa petite interface `Actions` transmet les interactions à
+  `GitPilotApplication`, évitant de rendre cette vue propriétaire du service Git.
+- **`CommitGraphView`** (`ui`) : affiche les commits des branches locales et distantes, leurs parents,
+  les lignes de branches et les références attachées aux commits. La sélection d'un commit affiche
+  ses fichiers dans le panneau Changes; le graphe reste visible jusqu'à la sélection d'un fichier.
 - **`DialogStyler`** (`ui`) : ajoute la feuille `styles.css` et la classe CSS commune aux dialogues.
-- **`styles.css`** : définit la palette, les contrôles, états de survol/sélection, listes, barre
-  d'outils et dialogues. Les composants et leurs comportements restent créés en Java.
+- **`styles.css`** : définit la palette, les contrôles, états de survol/sélection, graphes, listes,
+  barre d'outils et dialogues. Les composants et leurs comportements restent créés en Java.
 - **`gitdesk_icon.png`** : icône de la fenêtre et de l'application.
 
 ### Accès à Git et gestion des différences
@@ -160,7 +163,8 @@ nécessaires au lancement JavaFX et aux points d'extension documentés.
   dépôt. Elle implémente `AutoCloseable`; le gestionnaire d'onglets ferme le service avec son dépôt.
 - **`RepositoryOperations`** (`git`) : contrat des opérations d'un dépôt consommées par le coordinateur,
   le gestionnaire d'onglets et le menu. Les modèles de résultat sont définis au niveau du contrat;
-  les consommateurs ne dépendent ainsi pas de la classe JGit concrète. La signature propage encore
+  `CommitEntry` expose aussi ses parents et références pour construire le graphe. Les consommateurs ne
+  dépendent ainsi pas de la classe JGit concrète. La signature propage encore
   `GitAPIException`; l'abstraction n'est donc pas indépendante de toutes les API JGit.
 - **`RepositoryServiceFactory`** (`git`) : contrat de création des services de dépôt;
   `JGitRepositoryServiceFactory` fournit l'implémentation actuellement sélectionnée.

@@ -12,6 +12,7 @@ import javafx.scene.input.MouseEvent;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonBar;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.Alert;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
@@ -26,9 +27,14 @@ import javafx.scene.control.TextArea;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
+import org.kordamp.ikonli.fontawesome5.FontAwesomeSolid;
+import org.kordamp.ikonli.javafx.FontIcon;
+import org.kordamp.ikonli.fontawesome5.FontAwesomeSolid;
+import org.kordamp.ikonli.javafx.FontIcon;
 
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -46,6 +52,7 @@ final class RepositoryWorkspaceView {
         void unstageSelected(List<String> paths);
         void stageAll();
         void unstageAll();
+        void discardAllChanges();
         void commit(String message);
         void showWorkingDiff(String path, boolean staged);
         void showConflictDiff(String path);
@@ -64,7 +71,6 @@ final class RepositoryWorkspaceView {
 
     private final Stage owner;
     private final Actions actions;
-    private final ListView<RepositoryOperations.CommitEntry> history = new ListView<>();
     private final ListView<RepositoryOperations.StashEntry> stashes = new ListView<>();
     private final ListView<String> recent = new ListView<>();
     private final ListView<String> committedFiles = new ListView<>();
@@ -73,41 +79,47 @@ final class RepositoryWorkspaceView {
     private final ListView<String> staged = new ListView<>();
     private final ListView<String> conflicts = new ListView<>();
     private final VBox diffLines = new VBox();
+    private final CommitGraphView commitGraph;
+    private final ScrollPane diffScroll = new ScrollPane(diffLines);
+    private final Label diffTitle = new Label("Branches & commits");
     private final VBox commitPane = new VBox(10);
     private final VBox conflictPane = new VBox(10);
     private final VBox committedPane = new VBox(10);
     private final VBox stashedPane = new VBox(10);
-    private final HBox changeLists = new HBox(14);
-    private final Label changesTitle = new Label("Changes");
-    private final Label historyTitle = new Label("History");
+    private final VBox changeLists = new VBox(10);
+    private final Label unstagedTitle = new Label("Unstaged Files (0)");
+    private final Label stagedTitle = new Label("Staged Files (0)");
+    private final Label historyTitle = new Label("Activity");
     private final Label status = new Label("Open a local Git repository to get started.");
-    private final javafx.scene.control.TextField search = new javafx.scene.control.TextField();
+    private final Button discardAllButton = new Button();
     private final javafx.scene.control.TextField stashSearch = new javafx.scene.control.TextField();
     private final TabPane activityTabs = new TabPane();
     private final TextArea commitMessage = new TextArea();
     private final Button stageButton = new Button("Stage selected");
     private final Button unstageButton = new Button("Unstage selected");
     private final Button commitButton = new Button("Commit changes");
-    private List<RepositoryOperations.CommitEntry> allCommits = List.of();
     private boolean repositoryAvailable;
     private boolean operationAvailable = true;
-    private RepositoryOperations.CommitEntry pressedCommit;
-    private boolean pressedCommitWasSelected;
+    private RepositoryOperations.CommitEntry currentCommit;
     private RepositoryOperations.StashEntry pressedStash;
     private boolean pressedStashWasSelected;
     private List<RepositoryOperations.StashEntry> allStashes = List.of();
     private VBox unstagedPane;
     private VBox stagedPane;
     private VBox repositoryWorkspace;
+    private VBox changesSidebar;
+    private RepositoryOperations repositoryService;
 
     RepositoryWorkspaceView(Stage owner, Actions actions) {
         this.owner = owner;
         this.actions = actions;
+        this.commitGraph = new CommitGraphView(commit -> {
+            currentCommit = commit;
+            actions.historySelected(commit);
+        });
     }
 
     Node create() {
-        historyTitle.getStyleClass().add("section-title");
-        history.setPlaceholder(new Label("No commits yet"));
         recent.setPlaceholder(new Label("No recent repositories"));
         recent.getStyleClass().add("recent-repositories-list");
         recent.setCellFactory(list -> new ListCell<>() {
@@ -133,80 +145,50 @@ final class RepositoryWorkspaceView {
                 actions.openRecent(path);
             }
         });
-        search.setPromptText("Search commits...");
-        search.getStyleClass().add("search-field");
-        search.textProperty().addListener((o, old, query) -> {
-            filterHistory(query);
-            actions.userEvent(ApplicationEvent.COMMIT_SEARCH_UPDATED,
-                    "queryLength=" + (query == null ? 0 : query.length()));
-        });
-        history.setCellFactory(list -> new ListCell<>() {
-            @Override protected void updateItem(RepositoryOperations.CommitEntry commit, boolean empty) {
-                super.updateItem(commit, empty);
-                if (empty || commit == null) { setText(null); setGraphic(null); return; }
-                Label summary = new Label(commit.message());
-                summary.getStyleClass().add("commit-summary");
-                summary.setWrapText(true);
-                Label details = new Label(commit.shortId() + "  ·  " + commit.author()
-                        + "  ·  " + COMMIT_DATE.format(commit.date()));
-                details.getStyleClass().add("commit-details");
-                setGraphic(new VBox(5, summary, details));
-            }
-        });
-        history.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
-            pressedCommit = commitCellAt(event);
-            pressedCommitWasSelected = pressedCommit != null
-                    && pressedCommit.equals(history.getSelectionModel().getSelectedItem());
-        });
-        history.setOnMouseClicked(event -> {
-            RepositoryOperations.CommitEntry clickedCommit = commitCellAt(event);
-            if (pressedCommitWasSelected && pressedCommit != null
-                    && pressedCommit.equals(clickedCommit)) {
-                history.getSelectionModel().clearSelection();
-            }
-            pressedCommit = null;
-            pressedCommitWasSelected = false;
-        });
-        history.getSelectionModel().selectedItemProperty()
-                .addListener((o, old, commit) -> actions.historySelected(commit));
         configureStashes();
-        VBox commitsContent = new VBox(10, history, search);
-        VBox.setVgrow(history, Priority.ALWAYS);
-        Tab commitsTab = new Tab("Commits", commitsContent);
-        commitsTab.setClosable(false);
         VBox stashesContent = new VBox(10, stashes, stashSearch);
         VBox.setVgrow(stashes, Priority.ALWAYS);
         Tab stashesTab = new Tab("Stashes", stashesContent);
         stashesTab.setClosable(false);
-        activityTabs.getTabs().setAll(commitsTab, stashesTab);
+        activityTabs.getTabs().setAll(stashesTab);
         activityTabs.getSelectionModel().selectedItemProperty().addListener((o, old, selected) -> {
-            if (selected == commitsTab) {
-                actions.historySelected(selectedCommit());
-            } else if (selected == stashesTab) {
+            if (selected == stashesTab) {
                 actions.stashSelected(selectedStash());
             }
         });
         activityTabs.getStyleClass().add("activity-tabs");
+        historyTitle.getStyleClass().add("section-title");
         VBox historyPane = new VBox(12, historyTitle, activityTabs, recent);
-        historyPane.setPadding(new Insets(22));
-        historyPane.setPrefWidth(360);
-        historyPane.setMinWidth(280);
+        historyPane.setPadding(new Insets(16));
+        historyPane.setPrefWidth(245);
+        historyPane.setMinWidth(210);
         historyPane.getStyleClass().add("history-pane");
         VBox.setVgrow(activityTabs, Priority.ALWAYS);
         VBox.setVgrow(recent, Priority.ALWAYS);
 
-        changesTitle.getStyleClass().add("section-title");
+        FontIcon discardIcon = new FontIcon(FontAwesomeSolid.TRASH);
+        discardIcon.getStyleClass().add("discard-all-icon");
+        discardAllButton.setGraphic(discardIcon);
+        discardAllButton.getStyleClass().add("discard-all-button");
+        discardAllButton.setTooltip(new javafx.scene.control.Tooltip("Discard all changes"));
+        discardAllButton.setAccessibleText("Discard all changes");
+        discardAllButton.setDisable(true);
+        discardAllButton.setOnAction(event -> confirmDiscardAllChanges());
         status.getStyleClass().add("status-label");
+        status.setMaxWidth(250);
+        status.setTextOverrun(javafx.scene.control.OverrunStyle.ELLIPSIS);
         Region spacer = new Region();
-        HBox changesHeader = new HBox(changesTitle, spacer, status);
+        HBox changesHeader = new HBox(discardAllButton, spacer, status);
         HBox.setHgrow(spacer, Priority.ALWAYS);
         changesHeader.setAlignment(Pos.CENTER_LEFT);
         configureChangeLists();
         VBox diffPane = createDiffPane();
-        VBox mainPane = createMainPane(changesHeader, diffPane);
+        VBox mainPane = createMainPane(diffPane);
+        changesSidebar = createChangesPane(changesHeader);
         repositoryWorkspace = mainPane;
-        HBox result = new HBox(historyPane, mainPane);
+        HBox result = new HBox(historyPane, mainPane, changesSidebar);
         HBox.setHgrow(mainPane, Priority.ALWAYS);
+        HBox.setHgrow(changesSidebar, Priority.NEVER);
         setRepositoryAvailable(false);
         return result;
     }
@@ -215,8 +197,17 @@ final class RepositoryWorkspaceView {
         configureChangeList(unstaged, "Working tree is clean");
         configureChangeList(staged, "No staged changes");
         configureChangeList(conflicts, "No conflicts");
-        unstagedPane = createChangePane("Unstaged changes", "Stage all", stageButton, unstaged);
-        stagedPane = createChangePane("Staged changes", "Unstage all", unstageButton, staged);
+        toggleSelectionOnSecondClick(unstaged);
+        toggleSelectionOnSecondClick(staged);
+        toggleSelectionOnSecondClick(conflicts);
+        toggleSelectionOnSecondClick(committedFiles);
+        toggleSelectionOnSecondClick(stashedFiles);
+
+        unstagedPane = createChangePane(unstagedTitle, "Unstaged Files", "Stage all",
+                stageButton, unstaged);
+        stagedPane = createChangePane(stagedTitle, "Staged Files", "Unstage all",
+                unstageButton, staged);
+        commitPane.getStyleClass().add("commit-pane");
         Button resolveButton = new Button("Resolve selected");
         resolveButton.getStyleClass().add("text-button");
         resolveButton.disableProperty().bind(conflicts.getSelectionModel().selectedItemProperty().isNull());
@@ -227,18 +218,19 @@ final class RepositoryWorkspaceView {
         conflicts.getSelectionModel().selectedItemProperty()
                 .addListener((o, old, path) -> {
                     if (path != null) actions.userEvent(ApplicationEvent.CONFLICT_SELECTED, "file");
-                    actions.showConflictDiff(path);
+                    if (path == null) showGraph(); else actions.showConflictDiff(path);
                 });
         committedFiles.setPlaceholder(new Label("No files changed by this commit"));
         committedFiles.getStyleClass().add("change-list");
-        committedFiles.setPrefHeight(82);
-        committedFiles.setMinHeight(82);
-        committedFiles.setMaxHeight(82);
+        committedFiles.setPrefHeight(115);
+        committedFiles.setMinHeight(70);
         committedFiles.getSelectionModel().selectedItemProperty().addListener((o, old, path) -> {
             RepositoryOperations.CommitEntry selected = selectedCommit();
             if (path != null && selected != null) {
                 actions.userEvent(ApplicationEvent.COMMIT_FILE_SELECTED, selected.shortId());
                 actions.commitFileSelected(selected, path);
+            } else {
+                showGraph();
             }
         });
         committedPane.getChildren().setAll(sectionTitle("Committed changes"), committedFiles);
@@ -246,26 +238,22 @@ final class RepositoryWorkspaceView {
         setVisibleManaged(committedPane, false);
         stashedFiles.setPlaceholder(new Label("No files changed by this stash"));
         stashedFiles.getStyleClass().add("change-list");
-        stashedFiles.setPrefHeight(82);
-        stashedFiles.setMinHeight(82);
-        stashedFiles.setMaxHeight(82);
+        stashedFiles.setPrefHeight(115);
+        stashedFiles.setMinHeight(70);
         stashedFiles.getSelectionModel().selectedItemProperty().addListener((o, old, path) -> {
             RepositoryOperations.StashEntry selected = selectedStash();
             if (path != null && selected != null) {
                 actions.userEvent(ApplicationEvent.STASH_FILE_SELECTED, selected.reference());
                 actions.stashFileSelected(selected, path);
+            } else {
+                showGraph();
             }
         });
         stashedPane.getChildren().setAll(sectionTitle("Stashed changes"), stashedFiles);
         stashedPane.getStyleClass().add("change-pane");
         setVisibleManaged(stashedPane, false);
-        changeLists.getChildren().setAll(unstagedPane, stagedPane, conflictPane,
+        changeLists.getChildren().setAll(unstagedPane, stagedPane, commitPane, conflictPane,
                 committedPane, stashedPane);
-        HBox.setHgrow(unstagedPane, Priority.ALWAYS);
-        HBox.setHgrow(stagedPane, Priority.ALWAYS);
-        HBox.setHgrow(conflictPane, Priority.ALWAYS);
-        HBox.setHgrow(committedPane, Priority.ALWAYS);
-        HBox.setHgrow(stashedPane, Priority.ALWAYS);
     }
 
     private void configureStashes() {
@@ -338,23 +326,80 @@ final class RepositoryWorkspaceView {
     private void configureChangeList(ListView<String> list, String placeholder) {
         list.setPlaceholder(new Label(placeholder));
         list.getStyleClass().add("change-list");
-        list.setPrefHeight(82);
-        list.setMinHeight(82);
-        list.setMaxHeight(82);
+        list.setFixedCellSize(24);
+        list.setPrefHeight(98);
+        list.setMinHeight(98);
+        list.setMaxHeight(98);
     }
 
-    private VBox createChangePane(String title, String bulkTitle, Button selectedButton,
-                                  ListView<String> list) {
+    private void toggleSelectionOnSecondClick(ListView<String> list) {
+        int[] pressedIndex = {-1};
+        boolean[] wasSelected = {false};
+        list.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+            int index = changeListCellAt(list, event);
+            pressedIndex[0] = index;
+            wasSelected[0] = event.getButton() == javafx.scene.input.MouseButton.PRIMARY
+                    && index >= 0 && list.getSelectionModel().isSelected(index);
+        });
+        list.addEventHandler(MouseEvent.MOUSE_CLICKED, event -> {
+            int clickedIndex = changeListCellAt(list, event);
+            if (event.getButton() == javafx.scene.input.MouseButton.PRIMARY
+                    && wasSelected[0] && clickedIndex == pressedIndex[0]
+                    && list.getSelectionModel().isSelected(clickedIndex)) {
+                list.getSelectionModel().clearSelection(clickedIndex);
+            }
+            pressedIndex[0] = -1;
+            wasSelected[0] = false;
+        });
+    }
+
+    private int changeListCellAt(ListView<String> list, MouseEvent event) {
+        Node target = event.getPickResult().getIntersectedNode();
+        while (target != null && !(target instanceof ListCell<?>)) {
+            target = target.getParent();
+        }
+        return target instanceof ListCell<?> cell && cell.getListView() == list
+                && !cell.isEmpty() ? cell.getIndex() : -1;
+    }
+
+    private VBox createChangePane(Label heading, String title, String bulkTitle,
+                                  Button selectedButton, ListView<String> list) {
         Button bulk = new Button(bulkTitle);
         bulk.getStyleClass().add("text-button");
         bulk.setOnAction(event -> {
             if (list == unstaged) actions.stageAll(); else actions.unstageAll();
         });
-        Label heading = sectionTitle(title);
+        heading.getStyleClass().add("section-title");
+        FontIcon collapseIcon = new FontIcon(FontAwesomeSolid.CHEVRON_DOWN);
+        collapseIcon.getStyleClass().add("change-collapse-icon");
+        Button collapse = new Button();
+        collapse.setGraphic(collapseIcon);
+        collapse.getStyleClass().add("change-collapse-button");
+        collapse.setAccessibleText("Collapse " + title);
+        collapse.setTooltip(new javafx.scene.control.Tooltip("Collapse " + title));
         Region spacer = new Region();
-        HBox row = new HBox(heading, spacer, bulk);
+        HBox row = new HBox(collapse, heading, spacer, bulk);
         HBox.setHgrow(spacer, Priority.ALWAYS);
         row.setAlignment(Pos.CENTER_LEFT);
+        VBox pane = new VBox(8, row, list, selectedButton);
+        pane.getStyleClass().add("change-pane");
+        row.setOnMouseClicked(event -> {
+            if (event.getTarget() == row || event.getTarget() == heading) {
+                collapse.fire();
+            }
+        });
+        collapse.setOnAction(event -> {
+            boolean expanded = list.isManaged();
+            setVisibleManaged(list, !expanded);
+            setVisibleManaged(selectedButton, !expanded);
+            collapseIcon.setIconCode(expanded
+                    ? FontAwesomeSolid.CHEVRON_RIGHT : FontAwesomeSolid.CHEVRON_DOWN);
+            collapse.setAccessibleText((expanded ? "Expand " : "Collapse ") + title);
+            collapse.setTooltip(new javafx.scene.control.Tooltip(
+                    (expanded ? "Expand " : "Collapse ") + title));
+            pane.getStyleClass().remove("collapsed");
+            if (expanded) pane.getStyleClass().add("collapsed");
+        });
         selectedButton.getStyleClass().add("text-button");
         selectedButton.disableProperty().bind(list.getSelectionModel().selectedItemProperty().isNull());
         selectedButton.setOnAction(event -> {
@@ -366,25 +411,27 @@ final class RepositoryWorkspaceView {
             if (path != null) {
                 (list == unstaged ? staged : unstaged).getSelectionModel().clearSelection();
                 actions.showWorkingDiff(path, list == staged);
+            } else {
+                showGraph();
             }
         });
-        VBox pane = new VBox(10, row, list, selectedButton);
-        pane.getStyleClass().add("change-pane");
         return pane;
     }
 
     private VBox createDiffPane() {
         diffLines.getStyleClass().add("diff-lines");
-        ScrollPane scroll = new ScrollPane(diffLines);
-        scroll.setFitToWidth(true);
-        scroll.getStyleClass().add("diff-scroll");
-        VBox pane = new VBox(10, sectionTitle("Diff"), scroll);
+        diffScroll.setFitToWidth(true);
+        diffScroll.getStyleClass().add("diff-scroll");
+        StackPane content = new StackPane(commitGraph.node(), diffScroll);
+        content.getStyleClass().add("diff-content");
+        VBox pane = new VBox(10, diffTitle, content);
         pane.getStyleClass().add("diff-pane");
-        VBox.setVgrow(scroll, Priority.ALWAYS);
+        VBox.setVgrow(content, Priority.ALWAYS);
+        showGraph();
         return pane;
     }
 
-    private VBox createMainPane(HBox changesHeader, VBox diffPane) {
+    private VBox createMainPane(VBox diffPane) {
         commitMessage.setPromptText("Describe the changes you're committing...");
         commitMessage.setPrefRowCount(3);
         commitMessage.setWrapText(true);
@@ -396,10 +443,26 @@ final class RepositoryWorkspaceView {
         commitActions.setAlignment(Pos.CENTER_RIGHT);
         commitPane.getChildren().setAll(sectionTitle("Commit"), commitMessage, commitActions);
         commitPane.getStyleClass().add("commit-pane");
-        VBox main = new VBox(14, changesHeader, changeLists, diffPane, commitPane);
-        main.setPadding(new Insets(22));
+        VBox main = new VBox(12, diffPane);
+        main.setPadding(new Insets(14));
         VBox.setVgrow(diffPane, Priority.ALWAYS);
         return main;
+    }
+
+    private VBox createChangesPane(HBox changesHeader) {
+        changesHeader.getStyleClass().add("changes-header");
+        ScrollPane changeScroll = new ScrollPane(changeLists);
+        changeScroll.setFitToWidth(true);
+        changeScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        changeScroll.getStyleClass().add("changes-scroll");
+        VBox pane = new VBox(12, changesHeader, changeScroll);
+        pane.setPadding(new Insets(14, 14, 14, 0));
+        pane.setPrefWidth(320);
+        pane.setMinWidth(280);
+        pane.setMaxWidth(380);
+        pane.getStyleClass().add("changes-sidebar");
+        VBox.setVgrow(changeScroll, Priority.ALWAYS);
+        return pane;
     }
 
     void setRecentRepositories(List<String> paths) {
@@ -412,6 +475,9 @@ final class RepositoryWorkspaceView {
         setVisibleManaged(activityTabs, available);
         setVisibleManaged(recent, !available);
         if (repositoryWorkspace != null) setVisibleManaged(repositoryWorkspace, available);
+        if (changesSidebar != null) setVisibleManaged(changesSidebar, available);
+        discardAllButton.setDisable(!available || unstaged.getItems().isEmpty()
+                && staged.getItems().isEmpty());
         updateCommitEnabled();
     }
 
@@ -421,16 +487,20 @@ final class RepositoryWorkspaceView {
                           String statusText) {
         unstaged.setItems(FXCollections.observableArrayList(unstagedPaths));
         staged.setItems(FXCollections.observableArrayList(stagedPaths));
+        unstagedTitle.setText("Unstaged Files (" + unstagedPaths.size() + ")");
+        stagedTitle.setText("Staged Files (" + stagedPaths.size() + ")");
+        discardAllButton.setDisable(!repositoryAvailable
+                || !conflictPaths.isEmpty()
+                || unstagedPaths.isEmpty() && stagedPaths.isEmpty());
         conflicts.setItems(FXCollections.observableArrayList(conflictPaths));
         setVisibleManaged(conflictPane, !conflictPaths.isEmpty());
         setVisibleManaged(commitPane, !stagedPaths.isEmpty());
         status.getStyleClass().setAll("status-label");
         status.setText(statusText);
-        allCommits = List.copyOf(commits);
-        filterHistory(search.getText());
+        commitGraph.setCommits(commits);
         allStashes = List.copyOf(stashEntries);
         filterStashes(stashSearch.getText());
-        diffLines.getChildren().clear();
+        if (!diffScroll.isVisible()) showGraph();
         updateCommitEnabled();
     }
 
@@ -438,12 +508,12 @@ final class RepositoryWorkspaceView {
         unstaged.getItems().clear();
         staged.getItems().clear();
         conflicts.getItems().clear();
-        history.getItems().clear();
         stashes.getItems().clear();
         committedFiles.getItems().clear();
         stashedFiles.getItems().clear();
-        allCommits = List.of();
         allStashes = List.of();
+        commitGraph.setCommits(List.of());
+        currentCommit = null;
         diffLines.getChildren().clear();
         commitMessage.clear();
         status.getStyleClass().setAll("status-label");
@@ -456,15 +526,14 @@ final class RepositoryWorkspaceView {
 
     void resetForRepository() {
         commitMessage.clear();
-        search.clear();
         stashSearch.clear();
-        history.getSelectionModel().clearSelection();
+        commitGraph.clearSelection();
         stashes.getSelectionModel().clearSelection();
         showWorkingChanges();
     }
 
     RepositoryOperations.CommitEntry selectedCommit() {
-        return history.getSelectionModel().getSelectedItem();
+        return currentCommit;
     }
 
     RepositoryOperations.StashEntry selectedStash() {
@@ -489,40 +558,43 @@ final class RepositoryWorkspaceView {
         status.setText(text);
     }
 
-    void showCommit(RepositoryOperations.CommitEntry commit, List<String> files, String diff) {
-        changesTitle.setText("Committed changes");
+    void showCommit(List<String> files) {
         setVisibleManaged(unstagedPane, false);
         setVisibleManaged(stagedPane, false);
         setVisibleManaged(committedPane, true);
         setVisibleManaged(stashedPane, false);
         committedFiles.getSelectionModel().clearSelection();
         committedFiles.setItems(FXCollections.observableArrayList(files));
-        renderDiff("Commit " + commit.shortId() + " — " + commit.message() + "\n\n" + diff);
+        showGraph();
     }
 
-    void showStash(RepositoryOperations.StashEntry stash, List<String> files, String diff) {
-        changesTitle.setText("Stashed changes");
+    void showStash(List<String> files) {
         setVisibleManaged(unstagedPane, false);
         setVisibleManaged(stagedPane, false);
         setVisibleManaged(committedPane, false);
         setVisibleManaged(stashedPane, true);
         stashedFiles.getSelectionModel().clearSelection();
         stashedFiles.setItems(FXCollections.observableArrayList(files));
-        renderDiff(stash.reference() + " — " + stash.message() + "\n\n" + diff);
+        showGraph();
     }
 
     void showWorkingChanges() {
-        changesTitle.setText("Changes");
         setVisibleManaged(unstagedPane, true);
         setVisibleManaged(stagedPane, true);
         setVisibleManaged(committedPane, false);
         setVisibleManaged(stashedPane, false);
         committedFiles.getSelectionModel().clearSelection();
         stashedFiles.getSelectionModel().clearSelection();
+        currentCommit = null;
+        commitGraph.clearSelection();
         diffLines.getChildren().clear();
+        showGraph();
     }
 
     void renderDiff(String diff) {
+        diffTitle.setText("Diff");
+        setVisibleManaged(commitGraph.node(), false);
+        setVisibleManaged(diffScroll, true);
         diffLines.getChildren().clear();
         if (diff == null || diff.isEmpty()) {
             diffLines.getChildren().add(diffLine("No differences to display.", "diff-context"));
@@ -539,6 +611,12 @@ final class RepositoryWorkspaceView {
                     ? "diff-header" : "diff-context";
             diffLines.getChildren().add(diffLine(line, style));
         }
+    }
+
+    private void showGraph() {
+        diffTitle.setText("Branches & commits");
+        setVisibleManaged(diffScroll, false);
+        setVisibleManaged(commitGraph.node(), true);
     }
 
     void showConflictEditor(String path, RepositoryOperations.ConflictContents conflict) {
@@ -638,17 +716,6 @@ final class RepositoryWorkspaceView {
         return side;
     }
 
-    private void filterHistory(String query) {
-        String normalized = query == null ? "" : query.trim().toLowerCase();
-        List<RepositoryOperations.CommitEntry> filtered = allCommits.stream()
-                .filter(commit -> normalized.isEmpty()
-                        || commit.message().toLowerCase().contains(normalized)
-                        || commit.author().toLowerCase().contains(normalized)
-                        || commit.shortId().toLowerCase().contains(normalized))
-                .toList();
-        history.setItems(FXCollections.observableArrayList(filtered));
-    }
-
     private void filterStashes(String query) {
         String normalized = query == null ? "" : query.trim().toLowerCase();
         List<RepositoryOperations.StashEntry> filtered = allStashes.stream()
@@ -658,19 +725,6 @@ final class RepositoryWorkspaceView {
                         || stash.shortId().toLowerCase().contains(normalized))
                 .toList();
         stashes.setItems(FXCollections.observableArrayList(filtered));
-    }
-
-    private RepositoryOperations.CommitEntry commitCellAt(MouseEvent event) {
-        Node target = event.getPickResult().getIntersectedNode();
-        while (target != null && !(target instanceof ListCell<?>)) {
-            target = target.getParent();
-        }
-        if (target instanceof ListCell<?> cell
-                && cell.getListView() == history
-                && cell.getItem() instanceof RepositoryOperations.CommitEntry commit) {
-            return commit;
-        }
-        return null;
     }
 
     private RepositoryOperations.StashEntry stashCellAt(MouseEvent event) {
@@ -691,6 +745,19 @@ final class RepositoryWorkspaceView {
                 && !staged.getItems().isEmpty() && conflicts.getItems().isEmpty()
                 && !commitMessage.getText().isBlank();
         commitButton.setDisable(!canCommit);
+    }
+
+    private void confirmDiscardAllChanges() {
+        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION);
+        confirmation.initOwner(owner);
+        DialogStyler.apply(confirmation, actions::userEvent);
+        confirmation.setTitle("Discard all changes");
+        confirmation.setHeaderText("Clear all current repository changes?");
+        confirmation.setContentText(
+                "Your changes will be saved so you can restore them with Redo.");
+        if (confirmation.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+            actions.discardAllChanges();
+        }
     }
 
     private TextArea conflictText(String prompt, String contents) {

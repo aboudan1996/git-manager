@@ -210,6 +210,119 @@
     -fx-border-radius: 8px;
 }
 
+.diff-content {
+    -fx-background-color: #111318;
+}
+
+.commit-graph-pane {
+    -fx-spacing: 10px;
+    -fx-padding: 2px;
+    -fx-background-color: #111318;
+}
+
+.commit-graph-list {
+    -fx-background-color: #111318;
+    -fx-control-inner-background: #111318;
+    -fx-background-insets: 0;
+    -fx-border-color: #303540;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+}
+
+.commit-graph-cell {
+    -fx-padding: 5px 8px;
+    -fx-border-color: transparent transparent #252b35 transparent;
+}
+
+.commit-graph-cell:selected {
+    -fx-background-color: #263654;
+}
+
+.commit-graph-cell .commit-summary {
+    -fx-font-weight: normal;
+}
+
+.commit-ref {
+    -fx-padding: 2px 6px;
+    -fx-font-size: 10px;
+    -fx-background-radius: 8px;
+}
+
+.branch-ref {
+    -fx-background-color: #263b36;
+    -fx-text-fill: #8cd8b1;
+}
+
+.head-ref {
+    -fx-background-color: #293b5d;
+    -fx-text-fill: #a9c8ff;
+}
+
+.changes-sidebar {
+    -fx-border-color: transparent transparent transparent #292f3a;
+}
+
+.changes-scroll {
+    -fx-background-color: transparent;
+    -fx-background: #111318;
+    -fx-border-color: transparent;
+}
+
+.changes-scroll > .viewport {
+    -fx-background-color: #111318;
+}
+
+.change-collapse-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0 5px;
+    -fx-min-width: 24px;
+    -fx-min-height: 24px;
+}
+
+.change-collapse-icon {
+    -fx-icon-color: #9aa5b5;
+    -fx-icon-size: 10px;
+}
+
+.change-collapse-button:hover {
+    -fx-background-color: #252b36;
+    -fx-background-radius: 4px;
+}
+
+.change-collapse-button:hover .change-collapse-icon {
+    -fx-icon-color: #e3ebf8;
+}
+
+.changes-header {
+    -fx-padding: 2px 0 0 0;
+    -fx-spacing: 8px;
+}
+
+.discard-all-button {
+    -fx-background-color: transparent;
+    -fx-padding: 5px;
+    -fx-min-width: 28px;
+    -fx-min-height: 28px;
+    -fx-background-radius: 5px;
+}
+
+.discard-all-icon {
+    -fx-icon-color: #e07a84;
+    -fx-icon-size: 14px;
+}
+
+.discard-all-button:hover {
+    -fx-background-color: #3a252b;
+}
+
+.discard-all-button:disabled {
+    -fx-opacity: 0.45;
+}
+
+.discard-all-button:hover .discard-all-icon {
+    -fx-icon-color: #ff9aa3;
+}
+
 .diff-scroll {
     -fx-background: #111318;
     -fx-background-color: #111318;
@@ -329,6 +442,7 @@
     -fx-background-color: transparent;
     -fx-text-fill: #83adff;
     -fx-padding: 5px 7px;
+    -fx-font-size: 12px;
 }
 
 .text-button:hover {
