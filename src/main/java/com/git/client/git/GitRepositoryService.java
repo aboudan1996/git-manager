@@ -3,6 +3,7 @@ package com.git.client.git;
 import com.git.client.platform.WindowsCredentialStore;
 
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.MergeCommand;
 import org.eclipse.jgit.api.MergeResult;
 import org.eclipse.jgit.api.RebaseResult;
 import org.eclipse.jgit.api.Status;
@@ -467,7 +468,15 @@ public final class GitRepositoryService implements RepositoryOperations {
     }
 
     public String merge(String branch) throws GitAPIException {
-        MergeResult result = git.merge().include(resolveBranch(branch)).call();
+        return merge(branch, false);
+    }
+
+    public String merge(String branch, boolean noFastForward) throws GitAPIException {
+        MergeCommand command = git.merge().include(resolveBranch(branch));
+        if (noFastForward) {
+            command.setFastForward(MergeCommand.FastForwardMode.NO_FF);
+        }
+        MergeResult result = command.call();
         return "Merge " + result.getMergeStatus().toString().toLowerCase().replace('_', ' ');
     }
 

@@ -26,7 +26,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Handles repository diffs and bounded commit-history queries. */
+/**
+ * Handles repository diffs and bounded commit-history queries.
+ */
 final class GitDiffHistoryService {
     private final Repository repository;
 
@@ -205,15 +207,23 @@ final class GitDiffHistoryService {
         branchRefs.addAll(repository.getRefDatabase().getRefsByPrefix(Constants.R_HEADS));
         branchRefs.addAll(repository.getRefDatabase().getRefsByPrefix(Constants.R_REMOTES));
         Map<String, List<String>> refsByCommit = new HashMap<>();
+        Map<String, List<String>> branchesByCommit = new HashMap<>();
         try (RevWalk walk = new RevWalk(repository)) {
             List<RevCommit> starts = new ArrayList<>();
             for (org.eclipse.jgit.lib.Ref ref : branchRefs) {
                 if (ref.isSymbolic()) continue;
                 ObjectId refObject = repository.resolve(ref.getName());
                 if (refObject == null) continue;
-                refsByCommit.computeIfAbsent(refObject.name(), ignored -> new ArrayList<>())
-                        .add(ref.getName().replaceFirst("^refs/(heads|remotes)/", ""));
+                String branchName = ref.getName().replaceFirst("^refs/(heads|remotes)/", "");
+                refsByCommit.computeIfAbsent(refObject.name(), ignored -> new ArrayList<>()).add(branchName);
                 starts.add(walk.parseCommit(refObject));
+                try (RevWalk branchWalk = new RevWalk(repository)) {
+                    branchWalk.markStart(branchWalk.parseCommit(refObject));
+                    for (RevCommit containedCommit : branchWalk) {
+                        branchesByCommit.computeIfAbsent(containedCommit.getName(), ignored -> new ArrayList<>())
+                                .add(branchName);
+                    }
+                }
             }
             if (head != null) {
                 refsByCommit.computeIfAbsent(head.name(), ignored -> new ArrayList<>()).add("HEAD");
@@ -235,7 +245,9 @@ final class GitDiffHistoryService {
                         commit.getAuthorIdent().getEmailAddress(),
                         commit.getName(),
                         parents,
-                        refs
+                        refs,
+                        branchesByCommit.getOrDefault(commit.getName(), List.of())
+                                .stream().distinct().sorted().toList()
                 ));
                 if (commits.size() == 100) break;
             }

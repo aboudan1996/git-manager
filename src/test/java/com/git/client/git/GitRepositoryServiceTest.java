@@ -20,7 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Integration tests for the JGit repository adapter. */
+/**
+ * Integration tests for the JGit repository adapter.
+ */
 class GitRepositoryServiceTest {
     @TempDir
     Path directory;
@@ -114,8 +116,14 @@ class GitRepositoryServiceTest {
             RepositoryOperations.CommitEntry main = history.stream()
                     .filter(commit -> commit.message().equals("Main commit"))
                     .findFirst().orElseThrow();
+            RepositoryOperations.CommitEntry base = history.stream()
+                    .filter(commit -> commit.message().equals("Base commit"))
+                    .findFirst().orElseThrow();
 
             assertTrue(feature.refs().contains("feature/graph"));
+            assertTrue(feature.branches().contains("feature/graph"));
+            assertTrue(main.branches().contains("master"));
+            assertTrue(base.branches().containsAll(List.of("feature/graph", "master")));
             assertEquals("test@example.com", feature.authorEmail());
             assertTrue(main.refs().contains("master"));
             assertTrue(main.refs().contains("HEAD"));
@@ -533,7 +541,32 @@ class GitRepositoryServiceTest {
 
             assertFalse(result.contains("conflict"));
             assertTrue(Files.exists(directory.resolve("main.txt")));
-            assertEquals("Rebase feature", service.getHistory().get(0).message());
+            assertTrue(service.getHistory().stream()
+                    .anyMatch(commit -> commit.message().equals("Rebase feature")));
+        }
+    }
+
+    @Test
+    void createsMergeCommitWhenNoFastForwardIsRequested() throws Exception {
+        Files.writeString(directory.resolve("base.txt"), "base");
+        try (Git git = Git.open(directory.toFile())) {
+            git.add().addFilepattern("base.txt").call();
+            git.commit().setMessage("Base").call();
+        }
+
+        try (GitRepositoryService service = GitRepositoryService.open(directory)) {
+            service.createBranch("feature/no-ff");
+            Files.writeString(directory.resolve("feature.txt"), "feature");
+            service.stageAll();
+            service.commit("Feature commit");
+            service.checkout("master");
+
+            service.merge("feature/no-ff", true);
+
+            RepositoryOperations.CommitEntry mergeCommit = service.getHistory().stream()
+                    .filter(commit -> commit.parentIds().size() == 2)
+                    .findFirst().orElseThrow();
+            assertTrue(mergeCommit.message().startsWith("Merge"));
         }
     }
 

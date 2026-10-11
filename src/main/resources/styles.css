@@ -300,6 +300,11 @@
     -fx-background-radius: 8px;
 }
 
+.commit-branch {
+    -fx-padding: 1px 5px;
+    -fx-font-size: 9px;
+}
+
 .branch-ref {
     -fx-background-color: #263b36;
     -fx-text-fill: #8cd8b1;

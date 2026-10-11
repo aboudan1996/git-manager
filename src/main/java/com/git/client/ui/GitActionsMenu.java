@@ -5,6 +5,8 @@ import com.git.client.platform.ApplicationEvent;
 
 import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.ChoiceDialog;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Dialog;
@@ -18,6 +20,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -82,7 +85,7 @@ final class GitActionsMenu {
             addAction("Switch branch...", this::checkoutBranch);
             addRecent(recentRepositories);
             menu.getItems().add(new javafx.scene.control.SeparatorMenuItem());
-            addAction("Merge branch...", () -> chooseBranch("Merge branch", actions.repository()::merge));
+            addAction("Merge branch...", this::chooseMergeBranch);
             addAction("Rebase onto...", () -> chooseBranch("Rebase onto", actions.repository()::rebase));
             addAction("Cherry-pick selected commit", this::cherryPickSelected);
             addAction("Revert selected commit", this::revertSelected);
@@ -436,6 +439,44 @@ final class GitActionsMenu {
             dialog.setContentText("Select a local branch:");
             dialog.showAndWait().ifPresent(branch -> actions.repositoryAction(title,
                     () -> actions.setStatus(action.run(branch))));
+        } catch (IOException | GitAPIException exception) {
+            actions.showError("Could not list branches", exception);
+        }
+    }
+
+    private void chooseMergeBranch() {
+        String title = "Merge branch";
+        try {
+            String current = actions.repository().getState().branch();
+            List<String> branches = actions.repository().getLocalBranches().stream()
+                    .filter(branch -> !branch.equals(current)).toList();
+            if (branches.isEmpty()) {
+                actions.showMessage(title, "There are no other local branches.");
+                return;
+            }
+
+            ComboBox<String> branchChoice = new ComboBox<>(
+                    javafx.collections.FXCollections.observableArrayList(branches));
+            branchChoice.getSelectionModel().selectFirst();
+            CheckBox noFastForward = new CheckBox("Create a merge commit (--no-ff)");
+            noFastForward.setAccessibleText(
+                    "Create a merge commit even when the merge could fast-forward");
+
+            Dialog<ButtonType> dialog = new Dialog<>();
+            dialog.initOwner(actions.owner());
+            DialogStyler.apply(dialog, actions::logEvent);
+            dialog.setTitle(title);
+            dialog.setHeaderText("Merge a branch into " + current);
+            dialog.getDialogPane().setContent(new VBox(12,
+                    new Label("Select a local branch:"), branchChoice, noFastForward));
+            dialog.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+            dialog.showAndWait().filter(ButtonType.OK::equals).ifPresent(ignored -> {
+                String branch = branchChoice.getValue();
+                if (branch != null) {
+                    actions.repositoryAction(title, () -> actions.setStatus(
+                            actions.repository().merge(branch, noFastForward.isSelected())));
+                }
+            });
         } catch (IOException | GitAPIException exception) {
             actions.showError("Could not list branches", exception);
         }

@@ -31,7 +31,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 final class CommitGraphView {
-    private static final double ROW_HEIGHT = 68;
+    private static final double ROW_HEIGHT = 48;
     private static final double NODE_RADIUS = 12;
     private static final double LANE_GAP = 26;
     private static final Color[] LANE_COLORS = {
@@ -101,6 +101,7 @@ final class CommitGraphView {
                         || commit.message().toLowerCase().contains(normalized)
                         || commit.author().toLowerCase().contains(normalized)
                         || commit.shortId().toLowerCase().contains(normalized)
+                        || commit.branches().stream().anyMatch(branch -> branch.toLowerCase().contains(normalized))
                         || commit.refs().stream().anyMatch(ref -> ref.toLowerCase().contains(normalized)))
                 .toList();
         commits.setItems(FXCollections.observableArrayList(filtered));
@@ -187,11 +188,19 @@ final class CommitGraphView {
             String email = commit.authorEmail() == null ? "" : commit.authorEmail().trim();
             String authorDetails = commit.author() + (email.isEmpty() ? "" : " <" + email + ">");
             Pane graph = drawGraph(graphRow, authorInitials(commit.author()), authorDetails);
-            VBox info = new VBox(5);
+            VBox info = new VBox(2);
             Label summary = new Label(commit.message());
             summary.getStyleClass().add("commit-summary");
             summary.setWrapText(false);
             summary.setMaxWidth(Double.MAX_VALUE);
+            HBox summaryLine = new HBox(6);
+            summaryLine.setAlignment(Pos.CENTER_LEFT);
+            for (String branch : commit.branches()) {
+                Label branchBadge = new Label(branch);
+                branchBadge.getStyleClass().addAll("commit-ref", "branch-ref", "commit-branch");
+                summaryLine.getChildren().add(branchBadge);
+            }
+            summaryLine.getChildren().add(summary);
             Label details = new Label(commit.shortId() + "  ·  " + commit.author()
                     + "  ·  " + COMMIT_DATE.format(commit.date()));
             details.getStyleClass().add("commit-details");
@@ -203,7 +212,7 @@ final class CommitGraphView {
                 badge.getStyleClass().addAll("commit-ref", ref.equals("HEAD") ? "head-ref" : "branch-ref");
                 metadata.getChildren().add(badge);
             }
-            info.getChildren().setAll(summary, metadata);
+            info.getChildren().setAll(summaryLine, metadata);
             HBox content = new HBox(10, graph, info);
             content.setAlignment(Pos.CENTER_LEFT);
             HBox.setHgrow(info, Priority.ALWAYS);
