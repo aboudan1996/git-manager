@@ -116,6 +116,7 @@ class GitRepositoryServiceTest {
                     .findFirst().orElseThrow();
 
             assertTrue(feature.refs().contains("feature/graph"));
+            assertEquals("test@example.com", feature.authorEmail());
             assertTrue(main.refs().contains("master"));
             assertTrue(main.refs().contains("HEAD"));
             assertEquals(1, feature.parentIds().size());

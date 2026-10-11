@@ -282,7 +282,7 @@
 }
 
 .commit-graph-cell {
-    -fx-padding: 5px 8px;
+    -fx-padding: 0 8px;
     -fx-border-color: transparent transparent #252b35 transparent;
 }
 

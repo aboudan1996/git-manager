@@ -70,7 +70,7 @@ public interface RepositoryOperations extends AutoCloseable {
     record ConflictContents(String base, String ours, String theirs, String working) { }
 
     record CommitEntry(String message, String shortId, String author, Instant date,
-                       String objectId, List<String> parentIds, List<String> refs) {
+                       String authorEmail, String objectId, List<String> parentIds, List<String> refs) {
         public CommitEntry {
             parentIds = List.copyOf(parentIds);
             refs = List.copyOf(refs);
@@ -78,7 +78,12 @@ public interface RepositoryOperations extends AutoCloseable {
 
         public CommitEntry(String message, String shortId, String author, Instant date,
                            String objectId) {
-            this(message, shortId, author, date, objectId, List.of(), List.of());
+            this(message, shortId, author, date, "", objectId, List.of(), List.of());
+        }
+
+        public CommitEntry(String message, String shortId, String author, Instant date,
+                           String objectId, List<String> parentIds, List<String> refs) {
+            this(message, shortId, author, date, "", objectId, parentIds, refs);
         }
     }
 

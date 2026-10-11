@@ -10,11 +10,14 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -22,13 +25,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
 final class CommitGraphView {
-    private static final double ROW_HEIGHT = 62;
-    private static final double LANE_GAP = 17;
+    private static final double ROW_HEIGHT = 68;
+    private static final double NODE_RADIUS = 12;
+    private static final double LANE_GAP = 26;
     private static final Color[] LANE_COLORS = {
             Color.web("#69a9ff"), Color.web("#c58aff"), Color.web("#64d6b0"),
             Color.web("#f4b860"), Color.web("#ff7f9e"), Color.web("#8dd36f")
@@ -54,6 +59,7 @@ final class CommitGraphView {
         search.textProperty().addListener((observable, previous, query) -> filter(query));
         commits.setPlaceholder(new Label("No commits yet"));
         commits.getStyleClass().add("commit-graph-list");
+        commits.setFixedCellSize(ROW_HEIGHT + 1);
         commits.setCellFactory(list -> new CommitCell());
         commits.getSelectionModel().selectedItemProperty()
                 .addListener((observable, previous, selected) -> onSelected.accept(selected));
@@ -178,7 +184,9 @@ final class CommitGraphView {
             }
 
             GraphRow graphRow = graphRows.get(commit.objectId());
-            Canvas graph = drawGraph(graphRow);
+            String email = commit.authorEmail() == null ? "" : commit.authorEmail().trim();
+            String authorDetails = commit.author() + (email.isEmpty() ? "" : " <" + email + ">");
+            Pane graph = drawGraph(graphRow, authorInitials(commit.author()), authorDetails);
             VBox info = new VBox(5);
             Label summary = new Label(commit.message());
             summary.getStyleClass().add("commit-summary");
@@ -204,33 +212,73 @@ final class CommitGraphView {
         }
     }
 
-    private Canvas drawGraph(GraphRow row) {
+    private String authorInitials(String author) {
+        String[] nameParts = author == null ? new String[0] : author.trim().split("\\s+");
+        if (nameParts.length == 0 || nameParts[0].isBlank()) return "??";
+        String first = nameParts[0].substring(0, 1).toUpperCase(Locale.ROOT);
+        if (nameParts.length == 1) {
+            String onlyName = nameParts[0];
+            return onlyName.substring(0, Math.min(2, onlyName.length())).toUpperCase(Locale.ROOT);
+        }
+        String last = nameParts[nameParts.length - 1];
+        return first + last.substring(0, 1).toUpperCase(Locale.ROOT);
+    }
+
+    private Pane drawGraph(GraphRow row, String authorInitials, String authorDetails) {
         double width = Math.max(46, 22 + laneCount * LANE_GAP);
-        Canvas canvas = new Canvas(width, ROW_HEIGHT);
-        if (row == null) return canvas;
+        Canvas canvas = new Canvas(width, ROW_HEIGHT + 1);
+        Pane graph = new Pane(canvas);
+        graph.setMinSize(width, ROW_HEIGHT + 1);
+        graph.setPrefSize(width, ROW_HEIGHT + 1);
+        if (row == null) return graph;
         GraphicsContext graphics = canvas.getGraphicsContext2D();
         double centerY = ROW_HEIGHT / 2;
+        double rowEnd = ROW_HEIGHT + 1;
         for (int lane : row.activeLanes()) {
             double x = 12 + lane * LANE_GAP;
             graphics.setStroke(laneColor(lane));
             graphics.setLineWidth(2);
-            boolean laneContinues = row.parentLanes().contains(lane);
-            graphics.strokeLine(x, 0, x, lane == row.lane() && !laneContinues
-                    ? centerY : ROW_HEIGHT);
+            if (lane == row.lane()) {
+                graphics.strokeLine(x, 0, x, centerY - NODE_RADIUS);
+                if (row.parentLanes().contains(lane)) {
+                    graphics.strokeLine(x, centerY + NODE_RADIUS, x, rowEnd);
+                }
+            } else {
+                graphics.strokeLine(x, 0, x, rowEnd);
+            }
         }
         double nodeX = 12 + row.lane() * LANE_GAP;
         for (int parentLane : row.parentLanes()) {
             double parentX = 12 + parentLane * LANE_GAP;
             graphics.setStroke(laneColor(parentLane));
             graphics.setLineWidth(2);
-            graphics.strokeLine(nodeX, centerY, parentX, ROW_HEIGHT);
+            if (parentLane == row.lane()) continue;
+            double direction = Math.signum(parentX - nodeX);
+            graphics.beginPath();
+            graphics.moveTo(nodeX, centerY);
+            graphics.bezierCurveTo(
+                    nodeX + direction * LANE_GAP * 0.8, centerY + 8,
+                    parentX - direction * LANE_GAP * 0.8, ROW_HEIGHT - 10,
+                    parentX, rowEnd);
+            graphics.stroke();
         }
         graphics.setFill(laneColor(row.lane()));
-        graphics.fillOval(nodeX - 5, centerY - 5, 10, 10);
+        graphics.fillOval(nodeX - NODE_RADIUS, centerY - NODE_RADIUS,
+                NODE_RADIUS * 2, NODE_RADIUS * 2);
         graphics.setStroke(Color.web("#d9e6f7"));
         graphics.setLineWidth(1.5);
-        graphics.strokeOval(nodeX - 5, centerY - 5, 10, 10);
-        return canvas;
+        graphics.strokeOval(nodeX - NODE_RADIUS, centerY - NODE_RADIUS,
+                NODE_RADIUS * 2, NODE_RADIUS * 2);
+        graphics.setFill(Color.WHITE);
+        graphics.setFont(javafx.scene.text.Font.font("Segoe UI", javafx.scene.text.FontWeight.BOLD, 9));
+        graphics.setTextAlign(javafx.scene.text.TextAlignment.CENTER);
+        graphics.setTextBaseline(javafx.geometry.VPos.CENTER);
+        graphics.fillText(authorInitials, nodeX, centerY);
+        Circle nodeTooltipTarget = new Circle(nodeX, centerY, NODE_RADIUS + 3, Color.TRANSPARENT);
+        nodeTooltipTarget.setAccessibleText(authorDetails);
+        Tooltip.install(nodeTooltipTarget, new Tooltip(authorDetails));
+        graph.getChildren().add(nodeTooltipTarget);
+        return graph;
     }
 
     private record GraphRow(int lane, Set<Integer> activeLanes, List<Integer> parentLanes) {

@@ -232,6 +232,7 @@ final class GitDiffHistoryService {
                         commit.getName().substring(0, 7),
                         commit.getAuthorIdent().getName(),
                         Instant.ofEpochSecond(commit.getCommitTime()),
+                        commit.getAuthorIdent().getEmailAddress(),
                         commit.getName(),
                         parents,
                         refs
