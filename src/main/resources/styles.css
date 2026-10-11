@@ -410,8 +410,7 @@
 .quick-action-icon {
     -fx-text-fill: #e3ebf8;
     -fx-font-family: "Segoe UI Symbol", "Segoe UI";
-    -fx-font-size: 17px;
-    -fx-font-weight: bold;
+    -fx-font-size: 12px;
 }
 
 .quick-action-title {
@@ -681,4 +680,12 @@
 
 .gitdesk-dialog .button:cancel:hover {
     -fx-background-color: #394251;
+}
+
+.quick-action-icon {
+    -fx-icon-color: #e3ebf8;
+}
+
+.quick-action-button:hover .quick-action-icon {
+    -fx-icon-color: #f2f5fa;
 }

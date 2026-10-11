@@ -45,6 +45,8 @@ import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.util.StringConverter;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.kordamp.ikonli.javafx.FontIcon;
+import org.kordamp.ikonli.fontawesome5.FontAwesomeSolid;
 
 import java.io.File;
 import java.io.IOException;
@@ -140,8 +142,11 @@ public class GitPilotApplication extends Application {
         double initialWidth = Math.min(1440, screenBounds.getWidth() * 0.95);
         double initialHeight = screenBounds.getHeight() * 0.94;
         Scene scene = new Scene(root, initialWidth, initialHeight);
-        scene.getStylesheets().add(Objects.requireNonNull(GitPilotApplication.class.getResource("styles.css")).toExternalForm());
-        stage.setTitle("GitPilot");
+        scene.getStylesheets().add(
+                Objects.requireNonNull(
+                        GitPilotApplication.class.getResource("/styles.css")
+                ).toExternalForm()
+        );        stage.setTitle("GitPilot");
         stage.getIcons().add(new Image(
                 Objects.requireNonNull(GitPilotApplication.class.getResourceAsStream("/gitdesk_icon.png"))));
         stage.setMinWidth(Math.min(900, screenBounds.getWidth() * 0.8));
@@ -539,7 +544,7 @@ public class GitPilotApplication extends Application {
 //        openRepositoryButton.getStyleClass().add("secondary-button");
 //        openRepositoryButton.setOnAction(event -> chooseRepository());
         Button addRepositoryButton = createQuickAction(
-                "+",
+                FontAwesomeSolid.PLUS,
                 "Repo",
                 "Open another repository",
                 this::chooseRepository
@@ -563,23 +568,46 @@ public class GitPilotApplication extends Application {
         accountButton.getItems().setAll(signOut);
         quickActionButtons.clear();
         HBox quickActions = new HBox(3,
-                createQuickAction("↶", "Undo", "Save and clear uncommitted changes",
-                        () -> runRemoteAction("Undo", () -> repositoryService.undoWorkingChanges())),
-                createQuickAction("↷", "Redo", "Restore the last changes cleared by Undo",
-                        () -> runRemoteAction("Redo", () -> repositoryService.redoWorkingChanges())),
-                createQuickAction("↓", "Pull", "Pull changes from the upstream branch",
-                        () -> runRemoteAction("Pull", () -> repositoryService.pull())),
-                createQuickAction("↑", "Push", "Push the current branch",
-                        () -> runRemoteAction("Push", () -> repositoryService.push())),
-                createQuickAction("⎇", "Branch", "Search and switch branches",
+                createQuickAction(FontAwesomeSolid.UNDO, "Undo",
+                        "Save and clear uncommitted changes",
+                        () -> runRemoteAction("Undo",
+                                () -> repositoryService.undoWorkingChanges())),
+
+                createQuickAction(FontAwesomeSolid.REDO, "Redo",
+                        "Restore the last changes cleared by Undo",
+                        () -> runRemoteAction("Redo",
+                                () -> repositoryService.redoWorkingChanges())),
+
+                createQuickAction(FontAwesomeSolid.ARROW_DOWN, "Pull",
+                        "Pull changes from the upstream branch",
+                        () -> runRemoteAction("Pull",
+                                () -> repositoryService.pull())),
+
+                createQuickAction(FontAwesomeSolid.ARROW_UP, "Push",
+                        "Push the current branch",
+                        () -> runRemoteAction("Push",
+                                () -> repositoryService.push())),
+
+                createQuickAction(FontAwesomeSolid.CODE_BRANCH, "Branch",
+                        "Search and switch branches",
                         () -> actionsMenu.switchBranch()),
-                createQuickAction("▤", "Stash", "Stash working changes",
-                        () -> runRemoteAction("Stash", () -> repositoryService.stash())),
-                createQuickAction("⇩", "Pop", "Apply and remove the latest stash",
+
+                createQuickAction(FontAwesomeSolid.INBOX, "Stash",
+                        "Stash working changes",
+                        () -> runRemoteAction("Stash",
+                                () -> repositoryService.stash())),
+
+                createQuickAction(FontAwesomeSolid.BOX_OPEN, "Pop",
+                        "Apply and remove the latest stash",
                         () -> runRemoteAction("Pop stash",
                                 () -> repositoryService.applyLatestStash(true))),
-                createQuickAction("⇧", "Patch", "Export staged, unstaged and untracked changes",
-                        this::choosePatchDestination));
+
+                createQuickAction(FontAwesomeSolid.FILE_EXPORT, "Patch",
+                        "Export staged, unstaged and untracked changes",
+                        this::choosePatchDestination)
+        );
+        quickActions.setAlignment(Pos.CENTER_LEFT);
+        quickActions.getStyleClass().add("quick-actions");
         quickActions.setAlignment(Pos.CENTER_LEFT);
         quickActions.getStyleClass().add("quick-actions");
         operationSpinner.setPrefSize(19, 19);
@@ -601,19 +629,29 @@ public class GitPilotApplication extends Application {
         return toolbar;
     }
 
-    private Button createQuickAction(String icon, String title, String tooltip, Runnable action) {
-        Label iconLabel = new Label(icon);
-        iconLabel.getStyleClass().add("quick-action-icon");
+    private Button createQuickAction(
+            FontAwesomeSolid iconCode,
+            String title,
+            String tooltip,
+            Runnable action) {
+
+        FontIcon icon = new FontIcon(iconCode);
+        icon.setIconSize(8);
+        icon.getStyleClass().add("quick-action-icon");
+
         Label titleLabel = new Label(title);
         titleLabel.getStyleClass().add("quick-action-title");
-        VBox graphic = new VBox(1, iconLabel, titleLabel);
+
+        VBox graphic = new VBox(5, titleLabel, icon);
         graphic.setAlignment(Pos.CENTER);
+
         Button button = new Button();
         button.setGraphic(graphic);
         button.setTooltip(new Tooltip(tooltip));
         button.setAccessibleText(title + ": " + tooltip);
         button.getStyleClass().add("quick-action-button");
         button.setOnAction(event -> action.run());
+
         quickActionButtons.add(button);
         return button;
     }

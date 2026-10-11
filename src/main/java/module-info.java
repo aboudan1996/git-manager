@@ -20,6 +20,8 @@ module com.git.client {
 
     // Ouvrir pour les tests
     opens com.git.client.platform to org.junit.platform.commons, org.junit.jupiter.engine;
+    requires org.kordamp.ikonli.javafx;
+    requires org.kordamp.ikonli.fontawesome5;
 
 
 }
