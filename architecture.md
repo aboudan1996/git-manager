@@ -198,7 +198,7 @@ nécessaires au lancement JavaFX et aux points d'extension documentés.
   le journal applicatif.
 - **`LogService` (`platform`)** : écrit les messages de diagnostic sur la console et dans
   `~/.gitdesk/logs/gitdesk.log`, avec rotation. Le formateur masque les identifiants inclus dans
-  certaines URL et les tokens GitHub reconnus.
+  certaines URL, les paramètres d'URL sensibles, les tokens GitHub/GitLab reconnus et les Bearer tokens.
 
 ### Comptes GitHub/GitLab
 
@@ -206,7 +206,8 @@ nécessaires au lancement JavaFX et aux points d'extension documentés.
   GitHub ou GitLab avec `HttpClient`. L'URL d'instance HTTPS est éditable (valeurs initiales
   `https://github.com` et `https://gitlab.com`); les instances GitHub Enterprise utilisent
   `/api/v3/user` et GitLab `/api/v4/user`. Le service identifie le compte, restaure/vérifie une session
-  sauvegardée et supprime les identifiants à la déconnexion.
+  sauvegardée et supprime les identifiants à la déconnexion. Les redirections HTTP sont désactivées;
+  l'interface demande confirmation avant d'envoyer un token à une instance personnalisée.
 - **`GitAccountService.Account`** : contient le fournisseur, l'URL de l'instance, le nom du compte et une
   copie du token; `close()` efface le tableau de caractères. L'URL et le fournisseur sont enregistrés
   avec le secret dans Windows Credential Manager. Les entrées historiques sans URL sont restaurées
@@ -214,6 +215,9 @@ nécessaires au lancement JavaFX et aux points d'extension documentés.
 - **`GitCredentials.supportsHost`** : limite la remise du token aux URL distantes HTTPS dont l'hôte
   correspond exactement à l'instance authentifiée; les identifiants ne sont pas transmis à d'autres
   hôtes ni à des connexions HTTP en clair.
+- **`GitRepositoryService`** : refuse les identifiants intégrés aux URL distantes et les paramètres
+  d'URL qui ressemblent à des secrets. Les copies de secrets conservées par JGit sont effacées au
+  remplacement ou à la fermeture du service.
 - Le compte GitHub/GitLab sert à l'authentification API et aux opérations distantes. **L'identité
   d'auteur d'un commit est distincte** : `GitRepositoryService.commit` lit `user.name` et
   `user.email` dans la configuration Git du dépôt.

@@ -20,6 +20,7 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Hyperlink;
@@ -114,7 +115,7 @@ public class GitPilotApplication extends Application {
         this.changeMonitorFactory = Objects.requireNonNull(changeMonitorFactory);
         this.recentStore = new RecentRepositoryStore();
         this.repositoryTabs = new RepositoryTabManager();
-        this.accountService = new GitAccountService(true, true);
+        this.accountService = new GitAccountService();
     }
 
     @Override
@@ -299,7 +300,24 @@ public class GitPilotApplication extends Application {
     private void submitLogin() {
         if (loginButton.isDisabled() || loginProvider.getValue() == null) return;
         GitAccountService.Provider provider = loginProvider.getValue();
-        String instanceUrl = loginInstanceUrl.getText();
+        String instanceUrl;
+        try {
+            instanceUrl = GitAccountService.validateInstanceUrl(loginInstanceUrl.getText(), provider);
+        } catch (IOException exception) {
+            loginStatus.getStyleClass().setAll("login-status", "login-status-error");
+            loginStatus.setText(errorMessage(exception));
+            return;
+        }
+        if (!provider.isPublicInstance(java.net.URI.create(instanceUrl))) {
+            Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION);
+            confirmation.initOwner(stage);
+            DialogStyler.apply(confirmation, logService::event);
+            confirmation.setTitle("Confirm custom Git provider");
+            confirmation.setHeaderText("GitPilot will send your access token to this instance");
+            confirmation.setContentText(instanceUrl
+                    + "\n\nContinue only if you trust this server and its HTTPS certificate.");
+            if (confirmation.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
+        }
         logService.event(ApplicationEvent.SIGN_IN_STARTED, provider.displayName());
         char[] token = loginToken.getText().toCharArray();
         loginToken.clear();

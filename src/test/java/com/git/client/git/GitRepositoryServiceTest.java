@@ -41,6 +41,54 @@ class GitRepositoryServiceTest {
     }
 
     @Test
+    void rejectsCredentialsEmbeddedInRemoteUrls() {
+        assertThrows(IllegalArgumentException.class,
+                () -> GitRepositoryService.validateRemoteUrl(
+                        "https://user:token@example.com/team/project.git"));
+        assertThrows(IllegalArgumentException.class,
+                () -> GitRepositoryService.validateRemoteUrl(
+                        "https://token@example.com/team/project.git"));
+        assertThrows(IllegalArgumentException.class,
+                () -> GitRepositoryService.validateRemoteUrl(
+                        "https://example.com/team/project.git?private_token=secret"));
+        assertThrows(IllegalArgumentException.class,
+                () -> GitRepositoryService.validateRemoteUrl(
+                        "ssh://user:password@example.com/team/project.git"));
+        assertEquals("https://example.com/team/project.git",
+                GitRepositoryService.validateRemoteUrl(
+                        " https://example.com/team/project.git "));
+        assertEquals("git@example.com:team/project.git",
+                GitRepositoryService.validateRemoteUrl("git@example.com:team/project.git"));
+    }
+
+    @Test
+    void refusesNetworkOperationsWhenExistingRemoteContainsCredentials() throws Exception {
+        try (Git git = Git.open(directory.toFile())) {
+            git.getRepository().getConfig().setString("remote", "origin", "url",
+                    "https://user:token@example.com/team/project.git");
+            git.getRepository().getConfig().save();
+        }
+
+        try (GitRepositoryService service = GitRepositoryService.open(directory)) {
+            assertThrows(IllegalArgumentException.class, service::fetch);
+        }
+    }
+
+    @Test
+    void refusesNetworkOperationsWhenExistingRemoteContainsSensitiveQueryParameter()
+            throws Exception {
+        try (Git git = Git.open(directory.toFile())) {
+            git.getRepository().getConfig().setString("remote", "origin", "url",
+                    "https://example.com/team/project.git?token=secret");
+            git.getRepository().getConfig().save();
+        }
+
+        try (GitRepositoryService service = GitRepositoryService.open(directory)) {
+            assertThrows(IllegalArgumentException.class, service::fetch);
+        }
+    }
+
+    @Test
     void stagesUnstagesAndCommitsChanges() throws Exception {
         Path readme = directory.resolve("README.md");
         Files.writeString(readme, "GitDesk");

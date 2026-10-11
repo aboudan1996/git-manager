@@ -3,6 +3,8 @@ package com.git.client.platform;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -132,17 +134,34 @@ public final class WindowsCredentialStore {
     }
 
     public void save(String target, String username, char[] secret) throws IOException {
-        byte[] secretBytes = new String(secret).getBytes(StandardCharsets.UTF_8);
+        ByteBuffer encodedSecret = StandardCharsets.UTF_8.encode(CharBuffer.wrap(secret));
+        byte[] secretBytes = new byte[encodedSecret.remaining()];
+        encodedSecret.get(secretBytes);
+        if (encodedSecret.hasArray()) {
+            Arrays.fill(encodedSecret.array(), (byte) 0);
+        }
+        byte[] base64Secret = Base64.getEncoder().encode(secretBytes);
+        byte[] request = null;
         try {
-            String request = "{\"action\":\"write\",\"target\":\"" + jsonEscape(target)
+            byte[] prefix = ("{\"action\":\"write\",\"target\":\"" + jsonEscape(target)
                     + "\",\"username\":\"" + jsonEscape(username)
-                    + "\",\"secret\":\"" + Base64.getEncoder().encodeToString(secretBytes) + "\"}";
+                    + "\",\"secret\":\"").getBytes(StandardCharsets.UTF_8);
+            byte[] suffix = "\"}".getBytes(StandardCharsets.UTF_8);
+            request = new byte[prefix.length + base64Secret.length + suffix.length];
+            System.arraycopy(prefix, 0, request, 0, prefix.length);
+            System.arraycopy(base64Secret, 0, request, prefix.length, base64Secret.length);
+            System.arraycopy(suffix, 0, request, prefix.length + base64Secret.length,
+                    suffix.length);
             String result = invoke(request);
             if (!result.lines().anyMatch("OK"::equals)) {
                 throw new IOException("Windows Credential Manager did not confirm saving the credentials.");
             }
         } finally {
             Arrays.fill(secretBytes, (byte) 0);
+            Arrays.fill(base64Secret, (byte) 0);
+            if (request != null) {
+                Arrays.fill(request, (byte) 0);
+            }
         }
     }
 
@@ -174,6 +193,10 @@ public final class WindowsCredentialStore {
     }
 
     private String invoke(String request) throws IOException {
+        return invoke(request.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String invoke(byte[] request) throws IOException {
         String encodedScript = Base64.getEncoder().encodeToString(
                 POWERSHELL_SCRIPT.getBytes(StandardCharsets.UTF_16LE));
         Path powershell = findPowerShell();
@@ -182,7 +205,8 @@ public final class WindowsCredentialStore {
                 .redirectErrorStream(true)
                 .start();
         try (OutputStream input = process.getOutputStream()) {
-            input.write((request + System.lineSeparator()).getBytes(StandardCharsets.UTF_8));
+            input.write(request);
+            input.write(System.lineSeparator().getBytes(StandardCharsets.UTF_8));
         }
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
         try {

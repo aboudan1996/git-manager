@@ -4,20 +4,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Unit tests for provider account and token handling. */
 class GitAccountServiceTest {
-    private GitAccountService service;
-
     @BeforeEach
-    void setUp() throws Exception {
-        // Désactiver la whitelist stricte pour les tests par défaut
-        GitAccountService.setStrictWhitelistMode(false);
+    void setUp() {
         GitAccountService.clearAllowedEnterpriseHosts();
-        service = new GitAccountService(true, true);
+        assertNotNull(new GitAccountService());
     }
 
     @Test
@@ -49,9 +44,6 @@ class GitAccountServiceTest {
 
     @Test
     void validatesHttpsProviderUrlAndMatchesCredentialsToExactInstanceHost() throws IOException {
-        // Désactiver le mode strict de whitelist pour ce test
-        GitAccountService.setStrictWhitelistMode(false);
-
         assertEquals("https://git.example.com/base",
                 GitAccountService.validateInstanceUrl(" https://git.example.com/base/ ",
                         GitAccountService.Provider.GITHUB));
@@ -67,23 +59,29 @@ class GitAccountServiceTest {
 
         try (GitAccountService.Account account = new GitAccountService.Account(
                 GitAccountService.Provider.GITHUB, "developer", "https://git.example.com",
-                new char[]{'t'}, Instant.now())) {
+                new char[]{'t'})) {
             assertTrue(account.supportsHost("git.example.com"));
             assertFalse(account.supportsHost("other.example.com"));
         }
         try (GitAccountService.Account account = new GitAccountService.Account(
                 GitAccountService.Provider.GITHUB, "developer", "https://git.example.com:8443",
-                new char[]{'t'}, Instant.now())) {
+                new char[]{'t'})) {
             assertTrue(account.supportsHost("git.example.com", 8443));
             assertFalse(account.supportsHost("git.example.com", 443));
         }
     }
     @Test
-    void detectsPublicVsEnterpriseInstances() throws IOException {
-        assertTrue(GitAccountService.Provider.GITHUB.isPublicInstance("https://github.com"));
-        assertFalse(GitAccountService.Provider.GITHUB.isPublicInstance("https://git.example.com"));
-        assertTrue(GitAccountService.Provider.GITLAB.isPublicInstance("https://gitlab.com"));
-        assertFalse(GitAccountService.Provider.GITLAB.isPublicInstance("https://gitlab.company.com"));
+    void detectsPublicVsEnterpriseInstances() {
+        assertTrue(GitAccountService.Provider.GITHUB
+                .isPublicInstance(java.net.URI.create("https://github.com")));
+        assertTrue(GitAccountService.Provider.GITHUB
+                .isPublicInstance(java.net.URI.create("https://github.com/")));
+        assertFalse(GitAccountService.Provider.GITHUB
+                .isPublicInstance(java.net.URI.create("https://git.example.com")));
+        assertTrue(GitAccountService.Provider.GITLAB
+                .isPublicInstance(java.net.URI.create("https://gitlab.com")));
+        assertFalse(GitAccountService.Provider.GITLAB
+                .isPublicInstance(java.net.URI.create("https://gitlab.company.com")));
     }
 
     @Test
@@ -94,7 +92,7 @@ class GitAccountServiceTest {
     }
 
     @Test
-    void validateInstanceUrlRejectsEnterpriseHostNotInWhitelist() throws IOException {
+    void validateInstanceUrlRejectsEnterpriseHostNotInWhitelist() {
         // Sans whitelist configurée, les hosts entreprise devraient être acceptés
         assertDoesNotThrow(() ->
                 GitAccountService.validateInstanceUrl("https://gitlab.company.com",
@@ -107,6 +105,14 @@ class GitAccountServiceTest {
         assertDoesNotThrow(() ->
                 GitAccountService.validateInstanceUrl("https://gitlab.company.com",
                         GitAccountService.Provider.GITLAB));
+    }
+
+    @Test
+    void acceptsBareEnterpriseHostWhenAddingItToWhitelist() {
+        assertDoesNotThrow(() -> GitAccountService.addAllowedEnterpriseHost("gitlab.company.com"));
+        assertDoesNotThrow(() -> GitAccountService.addAllowedEnterpriseHost("gitlab.company.com/"));
+        assertThrows(IOException.class,
+                () -> GitAccountService.addAllowedEnterpriseHost("gitlab.company.com:8443"));
     }
 
     @Test
@@ -147,31 +153,11 @@ class GitAccountServiceTest {
     }
 
     @Test
-    void accountTracksTokenCreationTime() {
-        Instant createdAt = Instant.now();
-        try (GitAccountService.Account account = new GitAccountService.Account(
-                GitAccountService.Provider.GITHUB, "developer", "https://github.com",
-                new char[]{'t'}, createdAt)) {
-            assertFalse(account.isExpired(30));
-        }
-    }
-
-    @Test
-    void detectedExpiredTokens() {
-        Instant expiredTime = Instant.now().minusSeconds(31 * 86400L); // 31 jours ago
-        try (GitAccountService.Account account = new GitAccountService.Account(
-                GitAccountService.Provider.GITHUB, "developer", "https://github.com",
-                new char[]{'t'}, expiredTime)) {
-            assertTrue(account.isExpired(30));
-        }
-    }
-
-    @Test
-    void accountPreservesInstanceUrl() throws IOException {
+    void accountPreservesInstanceUrl() {
         String instanceUrl = "https://git.mycompany.com";
         try (GitAccountService.Account account = new GitAccountService.Account(
                 GitAccountService.Provider.GITLAB, "developer", instanceUrl,
-                new char[]{'t'}, Instant.now())) {
+                new char[]{'t'})) {
             assertEquals(instanceUrl, account.instanceUrl());
         }
     }
@@ -181,7 +167,7 @@ class GitAccountServiceTest {
         char[] originalToken = {'s', 'e', 'c', 'r', 'e', 't'};
         try (GitAccountService.Account account = new GitAccountService.Account(
                 GitAccountService.Provider.GITHUB, "developer", "https://github.com",
-                originalToken, Instant.now())) {
+                originalToken)) {
             char[] retrievedToken = account.token();
             originalToken[0] = 'X'; // Modifier le token original
             assertNotEquals('X', retrievedToken[0]); // Le token du compte ne doit pas changer
@@ -192,8 +178,7 @@ class GitAccountServiceTest {
     void accountSecurelyWipesTokenOnClose() {
         char[] token = {'s', 'e', 'c', 'r', 'e', 't'};
         GitAccountService.Account account = new GitAccountService.Account(
-                GitAccountService.Provider.GITHUB, "developer", "https://github.com",
-                token, Instant.now());
+                GitAccountService.Provider.GITHUB, "developer", "https://github.com", token);
         account.close();
 
         // Vérifier que le token a été vidé (tous les chars remplacés par '\0')
@@ -201,5 +186,22 @@ class GitAccountServiceTest {
         for (char c : retrievedToken) {
             assertEquals('\0', c);
         }
+    }
+
+    @Test
+    void redactsKnownProviderTokensAndCredentialBearingUrlsFromLogs() {
+        String input = "https://user:secret@example.com/repo "
+                + "glpat-abcdefghijklmnopqrstu "
+                + "ghp_abcdefghijklmnopqrstuvwxyz1234567890 "
+                + "?private_token=hidden "
+                + "Authorization: Bearer bearer-secret-value";
+
+        String redacted = LogService.redactSecrets(input);
+
+        assertFalse(redacted.contains("secret@example.com"));
+        assertFalse(redacted.contains("glpat-abcdefghijklmnopqrstu"));
+        assertFalse(redacted.contains("ghp_abcdefghijklmnopqrstuvwxyz1234567890"));
+        assertFalse(redacted.contains("private_token=hidden"));
+        assertFalse(redacted.contains("bearer-secret-value"));
     }
 }

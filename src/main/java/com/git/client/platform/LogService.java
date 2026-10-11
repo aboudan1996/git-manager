@@ -23,6 +23,12 @@ public final class LogService implements ApplicationLogger {
             Pattern.compile("(?i)(https?://)[^/@\\s]+@");
     private static final Pattern GITHUB_TOKEN =
             Pattern.compile("\\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\\b");
+    private static final Pattern GITLAB_TOKEN =
+            Pattern.compile("\\b(?:glpat|glrt|glptt|gldt|glcbt|glagent)-[A-Za-z0-9_-]{12,}\\b");
+    private static final Pattern SENSITIVE_URL_PARAMETER = Pattern.compile(
+            "(?i)([?&](?:access_token|private_token|token|password|secret|key)=)[^&#\\s]+");
+    private static final Pattern BEARER_CREDENTIAL =
+            Pattern.compile("(?i)(authorization\\s*[:=]\\s*bearer\\s+)[^\\s,;]+");
     private static final Path LOG_FILE = Path.of(
             System.getProperty("user.home"), ".gitdesk", "logs", "gitdesk.log");
 
@@ -107,13 +113,17 @@ public final class LogService implements ApplicationLogger {
                 record.getThrown().printStackTrace(new PrintWriter(stackTrace));
                 entry.append(stackTrace);
             }
-            return redact(entry.toString());
+            return redactSecrets(entry.toString());
         }
 
-        private String redact(String text) {
-            String withoutUrlCredentials = URL_CREDENTIALS.matcher(text).replaceAll("$1[REDACTED]@");
-            return GITHUB_TOKEN.matcher(withoutUrlCredentials).replaceAll("[REDACTED_TOKEN]");
-        }
+    }
+
+    static String redactSecrets(String text) {
+        String redacted = URL_CREDENTIALS.matcher(text).replaceAll("$1[REDACTED]@");
+        redacted = SENSITIVE_URL_PARAMETER.matcher(redacted).replaceAll("$1[REDACTED]");
+        redacted = BEARER_CREDENTIAL.matcher(redacted).replaceAll("$1[REDACTED]");
+        redacted = GITHUB_TOKEN.matcher(redacted).replaceAll("[REDACTED_TOKEN]");
+        return GITLAB_TOKEN.matcher(redacted).replaceAll("[REDACTED_TOKEN]");
     }
 
     private static final class ColoredConsoleHandler extends Handler {

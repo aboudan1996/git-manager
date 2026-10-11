@@ -26,17 +26,21 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.StreamSupport;
 
 /**
  * JGit adapter and repository facade. Keep JGit command details behind {@link RepositoryOperations}.
  */
 public final class GitRepositoryService implements RepositoryOperations {
+    private static final Pattern SENSITIVE_REMOTE_QUERY_PARAMETER = Pattern.compile(
+            "(?i)[?&](?:access_token|private_token|token|password|secret|api_key|key)=");
     private final Git git;
     private final GitDiffHistoryService diffHistoryService;
     private final GitConflictResolutionService conflictResolutionService;
@@ -55,9 +59,10 @@ public final class GitRepositoryService implements RepositoryOperations {
         if (credentialStore.isSupported()) {
             WindowsCredentialStore.StoredCredentials stored = credentialStore.load(credentialTarget);
             if (stored != null) {
+                char[] savedSecret = stored.secret().clone();
                 try {
-                    credentialsProvider = new UsernamePasswordCredentialsProvider(
-                            stored.username(), stored.secret().clone());
+                    credentialsProvider = new HttpsOnlyCredentialsProvider(
+                            new UsernamePasswordCredentialsProvider(stored.username(), savedSecret));
                     credentialsPersisted = true;
                 } finally {
                     java.util.Arrays.fill(stored.secret(), '\0');
@@ -81,17 +86,22 @@ public final class GitRepositoryService implements RepositoryOperations {
         if (uri == null || uri.isBlank()) {
             throw new IllegalArgumentException("Enter a repository URL.");
         }
-        CloneCommand command = Git.cloneRepository()
-                .setURI(uri.trim())
-                .setDirectory(destination.toFile());
-        UsernamePasswordCredentialsProvider credentials = null;
+        String safeUri = validateRemoteUrl(uri);
         boolean hasUsername = username != null && !username.isBlank();
         boolean hasPassword = password != null && password.length > 0;
         if (hasUsername != hasPassword) {
             throw new IllegalArgumentException("Enter both a username and an access token.");
         }
+        if (hasUsername && !safeUri.regionMatches(true, 0, "https://", 0, 8)) {
+            throw new IllegalArgumentException("Credentials may only be used with HTTPS remotes.");
+        }
+        CloneCommand command = Git.cloneRepository()
+                .setURI(safeUri)
+                .setDirectory(destination.toFile());
+        UsernamePasswordCredentialsProvider credentials = null;
         if (hasUsername) {
-            credentials = new UsernamePasswordCredentialsProvider(username.trim(), password.clone());
+            char[] passwordCopy = password.clone();
+            credentials = new UsernamePasswordCredentialsProvider(username.trim(), passwordCopy);
             command.setCredentialsProvider(credentials);
         }
         try {
@@ -144,14 +154,15 @@ public final class GitRepositoryService implements RepositoryOperations {
         }
         clearAuthenticatedAccount();
         clearHttpsCredentials();
-        credentialsProvider = new UsernamePasswordCredentialsProvider(normalizedUsername,
-                password.clone());
+        char[] passwordCopy = password.clone();
+        credentialsProvider = new HttpsOnlyCredentialsProvider(
+                new UsernamePasswordCredentialsProvider(normalizedUsername, passwordCopy));
         credentialsPersisted = persistCredentials;
         return persistCredentials;
     }
 
     public void clearHttpsCredentials() {
-        if (credentialsProvider instanceof UsernamePasswordCredentialsProvider provider) {
+        if (credentialsProvider instanceof HttpsOnlyCredentialsProvider provider) {
             provider.clear();
         }
         credentialsProvider = null;
@@ -182,10 +193,60 @@ public final class GitRepositoryService implements RepositoryOperations {
             throw new IllegalArgumentException("Enter both a remote name and URL.");
         }
         try {
-            git.remoteAdd().setName(name.trim()).setUri(new URIish(uri.trim())).call();
+            git.remoteAdd().setName(name.trim()).setUri(new URIish(validateRemoteUrl(uri))).call();
         } catch (java.net.URISyntaxException exception) {
             throw new IllegalArgumentException("Invalid remote URL or name.", exception);
         }
+    }
+
+    static String validateRemoteUrl(String remoteUrl) {
+        if (remoteUrl == null || remoteUrl.isBlank()) {
+            throw new IllegalArgumentException("Enter a repository URL.");
+        }
+        String normalized = remoteUrl.trim();
+        try {
+            URIish parsed = new URIish(normalized);
+            String scheme = parsed.getScheme();
+            boolean httpTransport = "http".equalsIgnoreCase(scheme)
+                    || "https".equalsIgnoreCase(scheme);
+            if (parsed.getPass() != null || (httpTransport && parsed.getUser() != null)) {
+                throw new IllegalArgumentException(
+                        "Do not put credentials in a remote URL. Configure them in GitPilot instead.");
+            }
+            if (httpTransport && containsSensitiveQueryParameter(normalized)) {
+                throw new IllegalArgumentException(
+                        "Do not put tokens or passwords in remote URL parameters.");
+            }
+            return normalized;
+        } catch (java.net.URISyntaxException exception) {
+            throw new IllegalArgumentException("Invalid remote URL.", exception);
+        }
+    }
+
+    private void rejectEmbeddedCredentialsInRemotes() throws GitAPIException {
+        for (RemoteConfig remote : git.remoteList().call()) {
+            List<URIish> configuredUris = new ArrayList<>(remote.getURIs());
+            configuredUris.addAll(remote.getPushURIs());
+            for (URIish uri : configuredUris) {
+                String scheme = uri.getScheme();
+                boolean httpTransport = "http".equalsIgnoreCase(scheme)
+                        || "https".equalsIgnoreCase(scheme);
+                if (uri.getPass() != null || (httpTransport && uri.getUser() != null)) {
+                    throw new IllegalArgumentException(
+                            "This remote URL contains credentials. Remove them from the URL "
+                                    + "and configure credentials in GitPilot.");
+                }
+                if (httpTransport && containsSensitiveQueryParameter(uri.toString())) {
+                    throw new IllegalArgumentException(
+                            "This remote URL contains a sensitive query parameter. Remove it "
+                                    + "and configure credentials in GitPilot.");
+                }
+            }
+        }
+    }
+
+    private static boolean containsSensitiveQueryParameter(String uri) {
+        return SENSITIVE_REMOTE_QUERY_PARAMETER.matcher(uri).find();
     }
 
     public RepositoryOperations.RepositoryState getState() throws GitAPIException, IOException {
@@ -521,6 +582,7 @@ public final class GitRepositoryService implements RepositoryOperations {
     }
 
     public String fetch() throws GitAPIException {
+        rejectEmbeddedCredentialsInRemotes();
         var command = git.fetch();
         CredentialsProvider activeCredentials = activeCredentialsProvider();
         if (activeCredentials != null) {
@@ -531,6 +593,7 @@ public final class GitRepositoryService implements RepositoryOperations {
     }
 
     public String refreshRemoteBranches() throws GitAPIException {
+        rejectEmbeddedCredentialsInRemotes();
         List<String> remotes = git.remoteList().call().stream()
                 .map(RemoteConfig::getName)
                 .toList();
@@ -549,6 +612,7 @@ public final class GitRepositoryService implements RepositoryOperations {
     }
 
     public String pull() throws GitAPIException {
+        rejectEmbeddedCredentialsInRemotes();
         var command = git.pull();
         CredentialsProvider activeCredentials = activeCredentialsProvider();
         if (activeCredentials != null) {
@@ -567,6 +631,7 @@ public final class GitRepositoryService implements RepositoryOperations {
     }
 
     public String push() throws GitAPIException, IOException {
+        rejectEmbeddedCredentialsInRemotes();
         Repository repository = git.getRepository();
         String branch = repository.getBranch();
         String remote = repository.getConfig().getString("branch", branch, "remote");
@@ -655,6 +720,35 @@ public final class GitRepositoryService implements RepositoryOperations {
         clearAuthenticatedAccount();
         clearHttpsCredentials();
         git.close();
+    }
+
+    private static final class HttpsOnlyCredentialsProvider extends CredentialsProvider {
+        private final UsernamePasswordCredentialsProvider delegate;
+
+        private HttpsOnlyCredentialsProvider(UsernamePasswordCredentialsProvider delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public boolean isInteractive() {
+            return false;
+        }
+
+        @Override
+        public boolean supports(CredentialItem... items) {
+            return delegate.supports(items);
+        }
+
+        @Override
+        public boolean get(URIish uri, CredentialItem... items)
+                throws UnsupportedCredentialItem {
+            return uri != null && "https".equalsIgnoreCase(uri.getScheme())
+                    && delegate.get(uri, items);
+        }
+
+        private void clear() {
+            delegate.clear();
+        }
     }
 
     private static final class AccountCredentialsProvider extends CredentialsProvider {

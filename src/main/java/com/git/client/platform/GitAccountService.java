@@ -9,53 +9,28 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Arrays;
-import java.util.Base64;
-import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import javax.crypto.Cipher;
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
+import java.util.concurrent.ConcurrentHashMap;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /** Validates and securely persists GitHub and GitLab personal access tokens. */
 public final class GitAccountService {
     private static final String CREDENTIAL_TARGET = "GitPilot:AuthenticatedAccount";
-    private static final int TOKEN_EXPIRY_DAYS = 30;
-    private static final Set<String> ALLOWED_ENTERPRISE_HOSTS = new HashSet<>();
+    private static final Set<String> ALLOWED_ENTERPRISE_HOSTS = ConcurrentHashMap.newKeySet();
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-    private static boolean strictWhitelistMode = false;
     private final WindowsCredentialStore credentialStore = new WindowsCredentialStore();
     private final HttpClient httpClient;
-    private final SecretKey encryptionKey;
-    private final boolean enforceHttpsOnly;
-    private final boolean validateCertificates;
 
-    public GitAccountService(boolean enforceHttpsOnly, boolean validateCertificates)
-            throws Exception {
-        this.enforceHttpsOnly = enforceHttpsOnly;
-        this.validateCertificates = validateCertificates;
-        this.encryptionKey = generateEncryptionKey();
-
-        // HttpClient avec configuration sécurisée
-        HttpClient.Builder builder = HttpClient.newBuilder()
+    public GitAccountService() {
+        this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
-                .version(HttpClient.Version.HTTP_2);
-
-        // Validation du certificat si requis
-        if (validateCertificates) {
-            // Garder les vérifications par défaut de Java
-        }
-
-        this.httpClient = builder.build();
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .version(HttpClient.Version.HTTP_2)
+                .build();
     }
 
     /**
@@ -66,8 +41,15 @@ public final class GitAccountService {
             throw new IOException("Host cannot be null or blank");
         }
         try {
-            new URI("https://" + host).getHost(); // Validation
-            ALLOWED_ENTERPRISE_HOSTS.add(host.toLowerCase(Locale.ROOT));
+            URI parsed = new URI("https://" + host.trim());
+            if (parsed.getHost() == null || parsed.getUserInfo() != null
+                    || parsed.getPort() != -1
+                    || (parsed.getRawPath() != null && !parsed.getRawPath().isEmpty()
+                    && !"/".equals(parsed.getRawPath()))
+                    || parsed.getQuery() != null || parsed.getFragment() != null) {
+                throw new IOException("Enter a hostname only, without a port or URL path.");
+            }
+            ALLOWED_ENTERPRISE_HOSTS.add(parsed.getHost().toLowerCase(Locale.ROOT));
         } catch (URISyntaxException e) {
             throw new IOException("Invalid host: " + e.getMessage());
         }
@@ -89,8 +71,7 @@ public final class GitAccountService {
                     : provider.defaultInstanceUrl();
             String validatedUrl = validateInstanceUrl(instanceUrl, provider);
 
-            return new Account(
-                    provider, fields[1], validatedUrl, stored.secret(), Instant.now());
+            return new Account(provider, fields[1], validatedUrl, stored.secret());
         } finally {
             Arrays.fill(stored.secret(), '\0');
         }
@@ -107,21 +88,14 @@ public final class GitAccountService {
                     provider.id() + "|" + username + "|" + validatedUrl,
                     token);
         }
-        return new Account(provider, username, validatedUrl, token, Instant.now());
+        return new Account(provider, username, validatedUrl, token);
     }
 
     public Account verifyStored(Account stored) throws IOException, InterruptedException {
-        // Vérifier l'expiration du token
-        if (stored.isExpired(TOKEN_EXPIRY_DAYS)) {
-            signOut(); // Supprimer les credentials expirés
-            throw new IOException("The stored credentials have expired. Please sign in again.");
-        }
-
         char[] token = stored.token();
         try {
             String verifiedUsername = verify(stored.provider(), stored.instanceUrl(), token);
-            return new Account(stored.provider(), verifiedUsername, stored.instanceUrl(),
-                    token, Instant.now());
+            return new Account(stored.provider(), verifiedUsername, stored.instanceUrl(), token);
         } finally {
             Arrays.fill(token, '\0');
         }
@@ -157,9 +131,13 @@ public final class GitAccountService {
                 throw new IOException("Query parameters and fragments are not allowed.");
             }
 
+            if (provider == null) {
+                throw new IOException("Choose a supported Git provider.");
+            }
+
             // Vérification de la whitelist pour les instances entreprise
             String host = uri.getHost();
-            if (!provider.isPublicInstance(instanceUrl) && !isHostAllowed(host)) {
+            if (!provider.isPublicInstance(uri) && !isHostAllowed(host)) {
                 throw new IOException("Host '" + host + "' is not in the allowed list. "
                         + "Contact your administrator to add it.");
             }
@@ -175,7 +153,7 @@ public final class GitAccountService {
     }
 
     private static boolean isHostAllowed(String host) {
-        return ALLOWED_ENTERPRISE_HOSTS.isEmpty() // Si liste vide, tous les hosts sont autorisés
+        return ALLOWED_ENTERPRISE_HOSTS.isEmpty()
                 || ALLOWED_ENTERPRISE_HOSTS.contains(host.toLowerCase(Locale.ROOT));
     }
 
@@ -202,7 +180,10 @@ public final class GitAccountService {
         try {
             response = httpClient.send(request.GET().build(),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        } catch (Exception e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
+        } catch (IOException e) {
             throw new IOException("Failed to connect to " + provider.displayName() + ": "
                     + e.getMessage(), e);
         }
@@ -239,28 +220,6 @@ public final class GitAccountService {
         }
     }
 
-    private char[] encryptToken(char[] token) throws Exception {
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.ENCRYPT_MODE, encryptionKey);
-        byte[] tokenBytes = new String(token).getBytes(StandardCharsets.UTF_8);
-        byte[] encryptedBytes = cipher.doFinal(tokenBytes);
-        return Base64.getEncoder().encodeToString(encryptedBytes).toCharArray();
-    }
-
-    private char[] decryptToken(char[] encryptedToken) throws Exception {
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.DECRYPT_MODE, encryptionKey);
-        byte[] decodedBytes = Base64.getDecoder().decode(new String(encryptedToken));
-        byte[] decryptedBytes = cipher.doFinal(decodedBytes);
-        return new String(decryptedBytes, StandardCharsets.UTF_8).toCharArray();
-    }
-
-    private SecretKey generateEncryptionKey() throws Exception {
-        KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-        keyGen.init(256, new SecureRandom());
-        return keyGen.generateKey();
-    }
-
     public enum Provider {
         GITHUB("github", "GitHub", "https://github.com"),
         GITLAB("gitlab", "GitLab", "https://gitlab.com");
@@ -279,8 +238,13 @@ public final class GitAccountService {
         public String displayName() { return displayName; }
         public String defaultInstanceUrl() { return defaultInstanceUrl; }
 
-        public boolean isPublicInstance(String instanceUrl) {
-            return instanceUrl.equalsIgnoreCase(defaultInstanceUrl);
+        public boolean isPublicInstance(URI instanceUri) {
+            URI publicUri = URI.create(defaultInstanceUrl);
+            String path = instanceUri.getPath();
+            return "https".equalsIgnoreCase(instanceUri.getScheme())
+                    && publicUri.getHost().equalsIgnoreCase(instanceUri.getHost())
+                    && (path == null || path.isEmpty() || "/".equals(path))
+                    && instanceUri.getPort() == -1;
         }
 
         URI userEndpoint(String instanceUrl) throws IOException {
@@ -314,22 +278,16 @@ public final class GitAccountService {
         private final String username;
         private final String instanceUrl;
         private final char[] token;
-        private final Instant createdAt;
 
-        public Account(Provider provider, String username, String instanceUrl,
-                       char[] token, Instant createdAt) {
+        public Account(Provider provider, String username, String instanceUrl, char[] token) {
             this.provider = provider;
             this.username = username;
             this.instanceUrl = instanceUrl;
             this.token = token.clone();
-            this.createdAt = createdAt;
         }
 
         public Provider provider() { return provider; }
         public String instanceUrl() { return instanceUrl; }
-        public boolean isExpired(int maxAgeDays) {
-            return Instant.now().minusSeconds(maxAgeDays * 86400L).isAfter(createdAt);
-        }
 
         @Override public String username() { return username; }
         @Override public char[] token() { return token.clone(); }
@@ -355,18 +313,6 @@ public final class GitAccountService {
         public InvalidTokenException(String message) {
             super(message);
         }
-    }
-
-    /**
-     * Active/désactive le mode strict de whitelist (pour les tests).
-     *
-     * En mode strict, seuls les hosts dans la whitelist sont autorisés pour les instances entreprise.
-     * En mode non-strict (par défaut), tous les hosts sont autorisés.
-     *
-     * @param strict true pour activer le mode strict, false pour le désactiver
-     */
-    public static void setStrictWhitelistMode(boolean strict) {
-        strictWhitelistMode = strict;
     }
 
     /**
