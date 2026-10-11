@@ -78,26 +78,21 @@ public final class GitAccountService {
         WindowsCredentialStore.StoredCredentials stored = credentialStore.load(CREDENTIAL_TARGET);
         if (stored == null) return null;
         try {
-            // Déchiffrer et valider le token
             String[] fields = stored.username().split("\\|", 3);
             if (fields.length < 2 || fields[0].isBlank() || fields[1].isBlank()) {
-                credentialStore.delete(CREDENTIAL_TARGET);
-                return null;
+                throw new IOException("Invalid stored credential record.");
             }
 
             Provider provider = Provider.fromId(fields[0]);
-            String instanceUrl = fields.length == 3 ? fields[2] : provider.defaultInstanceUrl();
+            String instanceUrl = fields.length == 3
+                    ? fields[2]
+                    : provider.defaultInstanceUrl();
             String validatedUrl = validateInstanceUrl(instanceUrl, provider);
 
-            // Vérifier l'expiration
-            char[] decryptedToken = decryptToken(stored.secret());
-            return new Account(provider, fields[1], validatedUrl, decryptedToken, Instant.now());
-        } catch (Exception e) {
-            // En cas d'erreur, supprimer les credentials compromis
-            try {
-                credentialStore.delete(CREDENTIAL_TARGET);
-            } catch (IOException ignored) {}
-            throw new IOException("Failed to load stored credentials securely", e);
+            return new Account(
+                    provider, fields[1], validatedUrl, stored.secret(), Instant.now());
+        } finally {
+            Arrays.fill(stored.secret(), '\0');
         }
     }
 
@@ -107,14 +102,10 @@ public final class GitAccountService {
         String username = verify(provider, validatedUrl, token);
 
         if (credentialStore.isSupported()) {
-            try {
-                char[] encryptedToken = encryptToken(token);
-                credentialStore.save(CREDENTIAL_TARGET,
-                        provider.id() + "|" + username + "|" + validatedUrl, encryptedToken);
-                Arrays.fill(encryptedToken, '\0'); // Nettoyer la copie
-            } catch (Exception e) {
-                throw new IOException("Failed to securely save credentials", e);
-            }
+            credentialStore.save(
+                    CREDENTIAL_TARGET,
+                    provider.id() + "|" + username + "|" + validatedUrl,
+                    token);
         }
         return new Account(provider, username, validatedUrl, token, Instant.now());
     }
