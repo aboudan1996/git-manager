@@ -2,12 +2,7 @@ package com.git.client.git;
 
 import com.git.client.platform.WindowsCredentialStore;
 
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.MergeCommand;
-import org.eclipse.jgit.api.MergeResult;
-import org.eclipse.jgit.api.RebaseResult;
-import org.eclipse.jgit.api.Status;
-import org.eclipse.jgit.api.CloneCommand;
+import org.eclipse.jgit.api.*;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
@@ -486,9 +481,25 @@ public final class GitRepositoryService implements RepositoryOperations {
     }
 
     public String continueRebase() throws GitAPIException {
+        Repository repository = git.getRepository();
+
+        System.out.println("Repository: " + repository.getDirectory());
+        System.out.println("Repository state: " + repository.getRepositoryState());
+
+        Status status = git.status().call();
+        System.out.println("Conflicts before continue: " + status.getConflicting());
+        System.out.println("Unmerged paths: " + status.getUntracked());
+
         RebaseResult result = git.rebase()
-                .setOperation(org.eclipse.jgit.api.RebaseCommand.Operation.CONTINUE).call();
-        return "Rebase " + result.getStatus().toString().toLowerCase().replace('_', ' ');
+                .setOperation(RebaseCommand.Operation.CONTINUE)
+                .call();
+
+        System.out.println("Rebase status: " + result.getStatus());
+        System.out.println("Conflicts after continue: " + result.getConflicts());
+        System.out.println("Repository state after: " + repository.getRepositoryState());
+
+        return "Rebase " + result.getStatus()
+                .toString().toLowerCase().replace('_', ' ');
     }
 
     public String abortRebase() throws GitAPIException {
