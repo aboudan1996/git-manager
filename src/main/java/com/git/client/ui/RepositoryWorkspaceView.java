@@ -4,6 +4,7 @@ import com.git.client.git.ConflictResolutionDocument;
 import com.git.client.git.RepositoryOperations;
 import com.git.client.platform.ApplicationEvent;
 
+import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -224,6 +225,7 @@ final class RepositoryWorkspaceView {
         committedFiles.getStyleClass().add("change-list");
         committedFiles.setPrefHeight(115);
         committedFiles.setMinHeight(70);
+        committedFiles.getStyleClass().addAll("change-list", "committed-list");
         committedFiles.getSelectionModel().selectedItemProperty().addListener((o, old, path) -> {
             RepositoryOperations.CommitEntry selected = selectedCommit();
             if (path != null && selected != null) {
@@ -238,6 +240,7 @@ final class RepositoryWorkspaceView {
         setVisibleManaged(committedPane, false);
         stashedFiles.setPlaceholder(new Label("No files changed by this stash"));
         stashedFiles.getStyleClass().add("change-list");
+        committedFiles.getStyleClass().addAll("change-list", "committed-list");
         stashedFiles.setPrefHeight(115);
         stashedFiles.setMinHeight(70);
         stashedFiles.getSelectionModel().selectedItemProperty().addListener((o, old, path) -> {
@@ -326,6 +329,7 @@ final class RepositoryWorkspaceView {
     private void configureChangeList(ListView<String> list, String placeholder) {
         list.setPlaceholder(new Label(placeholder));
         list.getStyleClass().add("change-list");
+        list.getStyleClass().addAll("change-list", "committed-list");
         list.setFixedCellSize(24);
         list.setPrefHeight(98);
         list.setMinHeight(98);

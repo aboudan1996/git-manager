@@ -860,3 +860,13 @@
 .quick-action-button:hover .quick-action-icon {
     -fx-icon-color: #f2f5fa;
 }
+
+.committed-list .list-cell:filled:hover {
+    -fx-background-color: #3a4a5c;   /* couleur au survol */
+}
+
+/* garder la couleur de sélection prioritaire, même au survol */
+.committed-list .list-cell:filled:selected,
+.committed-list .list-cell:filled:selected:hover {
+    -fx-background-color: #2f6fb3;
+}
