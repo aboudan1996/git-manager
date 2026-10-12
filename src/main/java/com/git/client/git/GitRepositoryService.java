@@ -481,25 +481,29 @@ public final class GitRepositoryService implements RepositoryOperations {
     }
 
     public String continueRebase() throws GitAPIException {
-        Repository repository = git.getRepository();
+        // Step 1: Check status to ensure all conflicts are resolved
+        org.eclipse.jgit.api.Status statusResult = git.status().call();
 
-        System.out.println("Repository: " + repository.getDirectory());
-        System.out.println("Repository state: " + repository.getRepositoryState());
+        if (!statusResult.getConflicting().isEmpty()) {
+            return "Cannot continue: Unresolved conflicts remain in: "
+                    + String.join(", ", statusResult.getConflicting());
+        }
 
-        Status status = git.status().call();
-        System.out.println("Conflicts before continue: " + status.getConflicting());
-        System.out.println("Unmerged paths: " + status.getUntracked());
-
+        // Step 2: Proceed with the continue operation
         RebaseResult result = git.rebase()
-                .setOperation(RebaseCommand.Operation.CONTINUE)
+                .setOperation(org.eclipse.jgit.api.RebaseCommand.Operation.CONTINUE)
                 .call();
 
-        System.out.println("Rebase status: " + result.getStatus());
-        System.out.println("Conflicts after continue: " + result.getConflicts());
-        System.out.println("Repository state after: " + repository.getRepositoryState());
+        RebaseResult.Status status = result.getStatus();
 
-        return "Rebase " + result.getStatus()
-                .toString().toLowerCase().replace('_', ' ');
+        // Step 3: Handle the final rebase state
+        if (status == RebaseResult.Status.OK || status == RebaseResult.Status.FAST_FORWARD) {
+            return "Rebase completed successfully!";
+        } else if (status == RebaseResult.Status.STOPPED) {
+            return "Rebase stopped again due to another conflict.";
+        } else {
+            return "Rebase status: " + status.toString().toLowerCase().replace('_', ' ');
+        }
     }
 
     public String abortRebase() throws GitAPIException {
