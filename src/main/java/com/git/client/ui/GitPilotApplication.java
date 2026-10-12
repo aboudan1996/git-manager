@@ -642,7 +642,20 @@ public class GitPilotApplication extends Application {
 
                 createQuickAction(FontAwesomeSolid.FILE_EXPORT, "Patch",
                         "Export staged, unstaged and untracked changes",
-                        this::choosePatchDestination)
+                        this::choosePatchDestination),
+
+                createQuickAction(FontAwesomeSolid.FILE_IMPORT, "Apply patch",
+                        "Apply a patch file to the working tree",
+                        () -> {
+                            Path patchFile = choosePatchFile();
+
+                            if (patchFile == null) {
+                                return; // L'utilisateur a annulé
+                            }
+
+                            runRemoteAction("Apply patch",
+                                    () -> repositoryService.applyPatch(patchFile));
+                        })
         );
         quickActions.setAlignment(Pos.CENTER_LEFT);
         quickActions.getStyleClass().add("quick-actions");
@@ -665,6 +678,23 @@ public class GitPilotApplication extends Application {
         toolbar.setPadding(new Insets(16, 22, 16, 22));
         toolbar.getStyleClass().add("toolbar");
         return toolbar;
+    }
+
+    private Path choosePatchFile() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Choose patch file");
+        fileChooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter(
+                        "Patch files (*.patch, *.diff)",
+                        "*.patch", "*.diff"
+                )
+        );
+
+        File selectedFile = fileChooser.showOpenDialog(
+                stage
+        );
+
+        return selectedFile != null ? selectedFile.toPath() : null;
     }
 
     private HBox createWindowTitleBar() {
@@ -1178,6 +1208,7 @@ public class GitPilotApplication extends Application {
                         : operation + " completed successfully. " + detail);
                 logService.info(operation + " completed successfully."
                         + (detail.isBlank() ? "" : " Result: " + detail));
+                showMessage(operation + " completed successfully", detail);
                 if (onSuccess != null) {
                     onSuccess.run();
                 }

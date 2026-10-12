@@ -148,4 +148,6 @@ public interface RepositoryOperations extends AutoCloseable {
     record StashEntry(String reference, String message, String shortId, Instant date,
                       String objectId) {
     }
+
+    String applyPatch(Path patchFile) throws IOException, GitAPIException;
 }

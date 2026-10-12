@@ -1,13 +1,20 @@
 package com.git.client.git;
 
+import com.git.client.platform.ApplicationLogger;
+import com.git.client.platform.LogService;
 import com.git.client.platform.WindowsCredentialStore;
 
 import org.eclipse.jgit.api.*;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.api.errors.PatchApplyException;
+import org.eclipse.jgit.api.errors.PatchFormatException;
+import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.patch.FileHeader;
+import org.eclipse.jgit.patch.Patch;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteConfig;
@@ -18,16 +25,11 @@ import org.eclipse.jgit.errors.UnsupportedCredentialItem;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Deque;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.StreamSupport;
 
@@ -46,6 +48,7 @@ public final class GitRepositoryService implements RepositoryOperations {
     private AccountCredentialsProvider accountCredentialsProvider;
     private boolean credentialsPersisted;
     private final Deque<UndoSnapshot> redoSnapshots = new ArrayDeque<>();
+    private static final ApplicationLogger logService = new LogService();
 
     private GitRepositoryService(Git git) throws IOException {
         this.git = git;
@@ -701,6 +704,86 @@ public final class GitRepositoryService implements RepositoryOperations {
         return updates.isBlank() ? "Push completed." : "Push completed.\n" + updates;
     }
 
+    @Override
+    public String applyPatch(Path patchFile) throws IOException, GitAPIException {
+        if (patchFile == null || !Files.isRegularFile(patchFile)) {
+            throw new IOException("Patch file does not exist: " + patchFile);
+        }
+        if (Files.size(patchFile) == 0) {
+            throw new PatchException("The patch file is empty.");
+        }
+
+        // 1. Validation du format et liste des fichiers touchés
+        Patch patch = new Patch();
+        try (InputStream in = Files.newInputStream(patchFile)) {
+            patch.parse(in);
+        }
+        if (!patch.getErrors().isEmpty()) {
+            throw new PatchException("Invalid patch: " + patch.getErrors().get(0).getMessage());
+        }
+        if (patch.getFiles().isEmpty()) {
+            throw new PatchException("This file is not a valid patch (no changes found).");
+        }
+
+        // 2. Recoupement avec les changements locaux
+        Set<String> touched = new TreeSet<>();
+        for (FileHeader fh : patch.getFiles()) {
+            if (!DiffEntry.DEV_NULL.equals(fh.getOldPath())) touched.add(fh.getOldPath());
+            if (!DiffEntry.DEV_NULL.equals(fh.getNewPath())) touched.add(fh.getNewPath());
+        }
+
+        Status status = git.status().call();
+        Set<String> dirty = new HashSet<>();
+        dirty.addAll(status.getModified());
+        dirty.addAll(status.getChanged());
+        dirty.addAll(status.getAdded());
+        dirty.addAll(status.getRemoved());
+        dirty.addAll(status.getMissing());
+        dirty.addAll(status.getConflicting());
+        dirty.addAll(status.getUntracked()); // un fichier créé par le patch peut déjà exister
+
+        List<String> overlap = touched.stream().filter(dirty::contains).toList();
+        if (!overlap.isEmpty()) {
+            throw new PatchException("Cannot apply the patch: it touches files with local changes ("
+                    + String.join(", ", overlap) + "). Commit or stash them first.");
+        }
+
+        // 3. Application, avec retour arrière si ça casse en cours de route
+        try (InputStream in = Files.newInputStream(patchFile)) {
+            ApplyResult result = git.apply().setPatch(in).call();
+            return "Patch applied successfully. "
+                    + result.getUpdatedFiles().size() + " file(s) updated.";
+        } catch (PatchFormatException e) {
+            rollbackPatch(patch);
+            throw new PatchException("Invalid patch format: " + e.getMessage(), e);
+        } catch (PatchApplyException e) {
+            rollbackPatch(patch);
+            throw new PatchException(
+                    "The patch does not apply to the current state of the repository: "
+                            + e.getMessage(), e);
+        }
+    }
+
+    private void rollbackPatch(Patch patch) {
+        Path workTree = git.getRepository().getWorkTree().toPath();
+        for (FileHeader fh : patch.getFiles()) {
+            try {
+                switch (fh.getChangeType()) {
+                    case ADD -> Files.deleteIfExists(workTree.resolve(fh.getNewPath()));
+                    case RENAME, COPY -> {
+                        Files.deleteIfExists(workTree.resolve(fh.getNewPath()));
+                        if (fh.getChangeType() == DiffEntry.ChangeType.RENAME) {
+                            git.checkout().addPath(fh.getOldPath()).call();
+                        }
+                    }
+                    default -> git.checkout().addPath(fh.getOldPath()).call();
+                }
+            } catch (IOException | GitAPIException ex) {
+                logService.warning("Rollback of " + fh.getNewPath() + " failed: " + ex.getMessage());
+            }
+        }
+    }
+
     private ObjectId resolveBranch(String branch) throws GitAPIException {
         try {
             ObjectId objectId = git.getRepository().resolve(branch);
@@ -840,5 +923,10 @@ public final class GitRepositoryService implements RepositoryOperations {
     }
 
     private record UndoSnapshot(String commitId, String branch) {
+    }
+
+    public static class PatchException extends IOException {
+        public PatchException(String message) { super(message); }
+        public PatchException(String message, Throwable cause) { super(message, cause); }
     }
 }
