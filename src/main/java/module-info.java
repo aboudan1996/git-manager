@@ -22,6 +22,7 @@ module com.git.client {
     opens com.git.client.platform to org.junit.platform.commons, org.junit.jupiter.engine;
     requires org.kordamp.ikonli.javafx;
     requires org.kordamp.ikonli.fontawesome5;
+    requires org.kordamp.ikonli.core;
 
 
 }

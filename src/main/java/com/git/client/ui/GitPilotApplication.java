@@ -111,6 +111,8 @@ public class GitPilotApplication extends Application {
     private ProgressIndicator loginSpinner;
     private boolean repositoriesRestored;
     private RepositoryChangeMonitor worktreeWatcher;
+    private final ToastService toasts = new ToastService();
+
 
     /**
      * Default constructor required by the JavaFX application launcher.
@@ -150,6 +152,8 @@ public class GitPilotApplication extends Application {
             updateControls();
         });
         root = new BorderPane();
+        StackPane sceneRoot = new StackPane(root, toasts.overlay());
+
         root.getStyleClass().add("app-root");
         toolbar = createToolbar();
         windowTitleBar = createWindowTitleBar();
@@ -163,7 +167,7 @@ public class GitPilotApplication extends Application {
         var screenBounds = Screen.getPrimary().getVisualBounds();
         double initialWidth = Math.min(1440, screenBounds.getWidth() * 0.95);
         double initialHeight = screenBounds.getHeight() * 0.94;
-        Scene scene = new Scene(root, initialWidth, initialHeight);
+        Scene scene = new Scene(sceneRoot, initialWidth, initialHeight);
         scene.getStylesheets().add(
                 Objects.requireNonNull(
                         GitPilotApplication.class.getResource("/styles.css")
@@ -1189,6 +1193,7 @@ public class GitPilotApplication extends Application {
             }
             operationRunning = false;
             setStatusText("Repository opened successfully.");
+            toasts.success("Repository opened successfully: " + path);
             updateControls();
             openNextRepository();
         });
@@ -1311,6 +1316,7 @@ public class GitPilotApplication extends Application {
                 logService.warning(operation + " finished with a non-success result: " + detail);
                 if (detail.toLowerCase().contains("failed")) {
                     showError(operation + " failed", new IllegalStateException(detail));
+                    toasts.error(operation + " failed, " + detail);
                 }
             } else {
                 setStatusText(detail.isBlank()
@@ -1318,7 +1324,8 @@ public class GitPilotApplication extends Application {
                         : operation + " completed successfully. " + detail);
                 logService.info(operation + " completed successfully."
                         + (detail.isBlank() ? "" : " Result: " + detail));
-                showMessage(operation + " completed successfully", detail);
+                //showMessage(operation + " completed successfully", detail);
+                toasts.success(operation + " completed successfully, "+ detail);
                 if (onSuccess != null) {
                     onSuccess.run();
                 }
@@ -1332,7 +1339,8 @@ public class GitPilotApplication extends Application {
             logService.error(operation + " failed.", failure);
             setStatusText(operation + " failed: " + errorMessage(failure));
             updateControls();
-            showError(operation + " failed", failure);
+            //showError(operation + " failed", failure);
+            toasts.error(operation + " failed, " + errorMessage(failure));
             openNextRepository();
         });
         Thread worker = new Thread(task, "git-network-operation");
@@ -1368,6 +1376,7 @@ public class GitPilotApplication extends Application {
             setStatusText("Repository cloned successfully.");
             logService.info("Clone completed successfully at "
                     + destination.toAbsolutePath().normalize());
+            toasts.success("Repository cloned successfully.");
             updateControls();
             openNextRepository();
         });
@@ -1380,7 +1389,8 @@ public class GitPilotApplication extends Application {
             logService.error("Clone failed.", failure);
             setStatusText("Clone failed: " + errorMessage(failure));
             updateControls();
-            showError("Clone failed", failure);
+            //showError("Clone failed", failure);
+            toasts.error("Clone failed, " + errorMessage(failure));
             openNextRepository();
         });
         Thread worker = new Thread(task, "git-clone-operation");

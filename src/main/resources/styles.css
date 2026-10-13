@@ -897,3 +897,27 @@
 .activity-tabs .tab-label {
     -fx-alignment: center;
 }
+
+.toast {
+    -fx-background-color: #1f2a37;
+    -fx-background-radius: 8;
+    -fx-padding: 10 14 10 12;
+    -fx-border-radius: 8;
+    -fx-border-width: 0 0 0 4;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.45), 14, 0.2, 0, 3);
+    -fx-cursor: hand;
+}
+.toast-label {
+    -fx-text-fill: #e8eef7;
+    -fx-font-size: 13px;
+}
+
+.toast-info    { -fx-border-color: #69a9ff; }
+.toast-success { -fx-border-color: #64d6b0; }
+.toast-warning { -fx-border-color: #f4b860; }
+.toast-error   { -fx-border-color: #ff7f9e; }
+
+.toast-info .toast-icon    { -fx-icon-color: #69a9ff; }
+.toast-success .toast-icon { -fx-icon-color: #64d6b0; }
+.toast-warning .toast-icon { -fx-icon-color: #f4b860; }
+.toast-error .toast-icon   { -fx-icon-color: #ff7f9e; }
