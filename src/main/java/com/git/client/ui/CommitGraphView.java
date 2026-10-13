@@ -189,6 +189,7 @@ final class CommitGraphView {
             String authorDetails = commit.author() + (email.isEmpty() ? "" : " <" + email + ">");
             Pane graph = drawGraph(graphRow, authorInitials(commit.author()), authorDetails);
             VBox info = new VBox(2);
+            info.setAlignment(Pos.CENTER_LEFT);   // centre verticalement le bloc de texte
             Label summary = new Label(commit.message());
             summary.getStyleClass().add("commit-summary");
             summary.setWrapText(false);

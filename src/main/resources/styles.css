@@ -870,3 +870,13 @@
 .committed-list .list-cell:filled:selected:hover {
     -fx-background-color: #2f6fb3;
 }
+
+.commit-graph-list .commit-graph-cell:hover {
+    -fx-background-color: #3a4a5c;
+}
+
+.commit-graph-list .commit-graph-cell:selected,
+.commit-graph-list .commit-graph-cell:selected,
+.commit-graph-list .commit-graph-cell:selected:hover {
+    -fx-background-color: #34507a;
+}
