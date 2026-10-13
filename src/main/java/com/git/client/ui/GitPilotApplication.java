@@ -63,7 +63,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-/** JavaFX bootstrap and coordinator for the open repository tabs and Git operations. */
+/**
+ * JavaFX bootstrap and coordinator for the open repository tabs and Git operations.
+ */
 public class GitPilotApplication extends Application {
     private final ApplicationLogger logService;
     private final RecentRepositoryStore recentStore;
@@ -110,13 +112,17 @@ public class GitPilotApplication extends Application {
     private boolean repositoriesRestored;
     private RepositoryChangeMonitor worktreeWatcher;
 
-    /** Default constructor required by the JavaFX application launcher. */
+    /**
+     * Default constructor required by the JavaFX application launcher.
+     */
     public GitPilotApplication() throws Exception {
         this(new LogService(), new JGitRepositoryServiceFactory(),
                 new NioRepositoryChangeMonitorFactory());
     }
 
-    /** Constructor injection keeps infrastructure implementations replaceable in tests/deployments. */
+    /**
+     * Constructor injection keeps infrastructure implementations replaceable in tests/deployments.
+     */
     GitPilotApplication(ApplicationLogger logService, RepositoryServiceFactory repositoryServiceFactory,
                         RepositoryChangeMonitorFactory changeMonitorFactory) throws Exception {
         this.logService = Objects.requireNonNull(logService);
@@ -180,7 +186,9 @@ public class GitPilotApplication extends Application {
         restoreAuthentication();
     }
 
-    private RepositoryWorkspaceView workspace() { return activeWorkspace; }
+    private RepositoryWorkspaceView workspace() {
+        return activeWorkspace;
+    }
 
     private Node createLoginView() {
         Label brandMark = new Label("GP");
@@ -202,10 +210,13 @@ public class GitPilotApplication extends Application {
         loginProvider.getItems().setAll(GitAccountService.Provider.values());
         loginProvider.setValue(GitAccountService.Provider.GITHUB);
         loginProvider.setConverter(new StringConverter<>() {
-            @Override public String toString(GitAccountService.Provider provider) {
+            @Override
+            public String toString(GitAccountService.Provider provider) {
                 return provider == null ? "" : provider.displayName();
             }
-            @Override public GitAccountService.Provider fromString(String value) {
+
+            @Override
+            public GitAccountService.Provider fromString(String value) {
                 return null;
             }
         });
@@ -281,7 +292,8 @@ public class GitPilotApplication extends Application {
         loginSpinner.setManaged(true);
         loginButton.setDisable(true);
         Task<GitAccountService.Account> task = new Task<>() {
-            @Override protected GitAccountService.Account call() throws Exception {
+            @Override
+            protected GitAccountService.Account call() throws Exception {
                 GitAccountService.Account saved = accountService.loadStoredAccount();
                 if (saved == null) return null;
                 try {
@@ -344,7 +356,8 @@ public class GitPilotApplication extends Application {
         loginStatus.getStyleClass().setAll("login-status");
         loginStatus.setText("Verifying your account...");
         Task<GitAccountService.Account> task = new Task<>() {
-            @Override protected GitAccountService.Account call() throws Exception {
+            @Override
+            protected GitAccountService.Account call() throws Exception {
                 try {
                     return accountService.signIn(provider, instanceUrl, token);
                 } finally {
@@ -423,7 +436,8 @@ public class GitPilotApplication extends Application {
         operationRunning = true;
         updateControls();
         Task<Void> task = new Task<>() {
-            @Override protected Void call() throws Exception {
+            @Override
+            protected Void call() throws Exception {
                 accountService.signOut();
                 return null;
             }
@@ -453,101 +467,189 @@ public class GitPilotApplication extends Application {
 
     private RepositoryWorkspaceView.Actions workspaceActions() {
         return new RepositoryWorkspaceView.Actions() {
-            @Override public void openRecent(String path) { openRepository(Path.of(path)); }
-            @Override public void stageSelected(List<String> paths) {
+            @Override
+            public void openRecent(String path) {
+                openRepository(Path.of(path));
+            }
+
+            @Override
+            public void stageSelected(List<String> paths) {
                 runRepositoryAction("Stage selected changes", () -> repositoryService.stage(paths));
             }
-            @Override public void unstageSelected(List<String> paths) {
+
+            @Override
+            public void unstageSelected(List<String> paths) {
                 runRepositoryAction("Unstage selected changes", () -> repositoryService.unstage(paths));
             }
-            @Override public void stageAll() {
+
+            @Override
+            public void stageAll() {
                 runRepositoryAction("Stage all changes", () -> repositoryService.stageAll());
             }
-            @Override public void unstageAll() {
+
+            @Override
+            public void unstageAll() {
                 runRepositoryAction("Unstage all changes", () -> repositoryService.unstageAll());
             }
-            @Override public void discardAllChanges() {
+
+            @Override
+            public void discardAllChanges() {
                 runRepositoryAction("Discard all changes", () -> repositoryService.undoWorkingChanges());
             }
-            @Override public void commit(String message) {
+
+            @Override
+            public void commit(String message) {
                 runRepositoryAction("Commit", () -> {
                     repositoryService.commit(message);
                     workspace().clearCommitMessage();
                 });
             }
-            @Override public void showWorkingDiff(String path, boolean staged) {
+
+            @Override
+            public void showWorkingDiff(String path, boolean staged) {
                 showDiff(path, staged);
             }
-            @Override public void showConflictDiff(String path) { updateConflictDiff(path); }
-            @Override public void userEvent(ApplicationEvent event, String detail) {
+
+            @Override
+            public void showConflictDiff(String path) {
+                updateConflictDiff(path);
+            }
+
+            @Override
+            public void userEvent(ApplicationEvent event, String detail) {
                 logService.event(event, detail);
             }
-            @Override public void resolveConflict(String path, String contents) {
+
+            @Override
+            public void resolveConflict(String path, String contents) {
                 runRepositoryAction("Resolve conflict", () -> repositoryService.resolveConflict(path, contents));
             }
-            @Override public void loadConflict(String path) { openConflictEditor(path); }
-            @Override public void historySelected(RepositoryOperations.CommitEntry commit) {
+
+            @Override
+            public void loadConflict(String path) {
+                openConflictEditor(path);
+            }
+
+            @Override
+            public void historySelected(RepositoryOperations.CommitEntry commit) {
                 logService.event(commit == null ? ApplicationEvent.COMMIT_SELECTION_CLEARED
-                        : ApplicationEvent.COMMIT_SELECTED,
+                                : ApplicationEvent.COMMIT_SELECTED,
                         commit == null ? "" : commit.shortId());
                 showCommitDiff(commit);
             }
-            @Override public void commitFileSelected(RepositoryOperations.CommitEntry commit, String path) {
+
+            @Override
+            public void commitFileSelected(RepositoryOperations.CommitEntry commit, String path) {
                 showCommitFileDiff(commit, path);
             }
-            @Override public void stashSelected(RepositoryOperations.StashEntry stash) {
+
+            @Override
+            public void stashSelected(RepositoryOperations.StashEntry stash) {
                 logService.event(stash == null ? ApplicationEvent.STASH_SELECTION_CLEARED
-                        : ApplicationEvent.STASH_SELECTED,
+                                : ApplicationEvent.STASH_SELECTED,
                         stash == null ? "" : stash.reference());
                 showStashDiff(stash);
             }
-            @Override public void stashFileSelected(RepositoryOperations.StashEntry stash, String path) {
+
+            @Override
+            public void stashFileSelected(RepositoryOperations.StashEntry stash, String path) {
                 showStashFileDiff(stash, path);
             }
-            @Override public void applyStash(RepositoryOperations.StashEntry stash,
-                                             boolean dropAfterApply) {
+
+            @Override
+            public void applyStash(RepositoryOperations.StashEntry stash,
+                                   boolean dropAfterApply) {
                 if (stash == null) return;
                 String operation = dropAfterApply ? "Pop selected stash" : "Apply selected stash";
                 runRemoteAction(operation,
                         () -> repositoryService.applyStash(stash.objectId(), dropAfterApply));
+            }
+
+            @Override
+            public void deleteStash(RepositoryOperations.StashEntry stash) {
+                if (stash == null) return;
+                runRemoteAction("Delete selected stash",
+                        () -> repositoryService.dropStash(stash.objectId()));
+            }
+
+            @Override
+            public void editStashMessage(RepositoryOperations.StashEntry stash, String newMessage) {
+                if (stash == null) return;
+                runRemoteAction("Edit stash message",
+                        () -> repositoryService.editStashMessage(stash.objectId(), newMessage));
             }
         };
     }
 
     private GitActionsMenu.Actions menuActions() {
         return new GitActionsMenu.Actions() {
-            @Override public Stage owner() { return stage; }
-            @Override public RepositoryOperations repository() { return repositoryService; }
-            @Override public RepositoryOperations.CommitEntry selectedCommit(String action) {
+            @Override
+            public Stage owner() {
+                return stage;
+            }
+
+            @Override
+            public RepositoryOperations repository() {
+                return repositoryService;
+            }
+
+            @Override
+            public RepositoryOperations.CommitEntry selectedCommit(String action) {
                 RepositoryOperations.CommitEntry selected = workspace().selectedCommit();
                 if (selected == null) showMessage(action, "Select a commit in the history first.");
                 return selected;
             }
-            @Override public void repositoryAction(String operation, GitActionsMenu.RepositoryAction action) {
+
+            @Override
+            public void repositoryAction(String operation, GitActionsMenu.RepositoryAction action) {
                 runRepositoryAction(operation, action::run);
             }
-            @Override public void remoteAction(String operation, GitActionsMenu.RemoteAction action) {
+
+            @Override
+            public void remoteAction(String operation, GitActionsMenu.RemoteAction action) {
                 runRemoteAction(operation, action::run);
             }
-            @Override public void remoteAction(String operation, GitActionsMenu.RemoteAction action,
-                                               Runnable onSuccess) {
+
+            @Override
+            public void remoteAction(String operation, GitActionsMenu.RemoteAction action,
+                                     Runnable onSuccess) {
                 runRemoteAction(operation, action::run, onSuccess);
             }
-            @Override public void setStatus(String text) { setStatusText(text); }
-            @Override public void logInfo(String message) { logService.info(message); }
-            @Override public void logEvent(ApplicationEvent event, String detail) {
+
+            @Override
+            public void setStatus(String text) {
+                setStatusText(text);
+            }
+
+            @Override
+            public void logInfo(String message) {
+                logService.info(message);
+            }
+
+            @Override
+            public void logEvent(ApplicationEvent event, String detail) {
                 logService.event(event, detail);
             }
-            @Override public void showError(String title, Throwable error) {
+
+            @Override
+            public void showError(String title, Throwable error) {
                 GitPilotApplication.this.showError(title, error);
             }
-            @Override public void showMessage(String title, String message) {
+
+            @Override
+            public void showMessage(String title, String message) {
                 GitPilotApplication.this.showMessage(title, message);
             }
-            @Override public void clone(String url, String username, char[] secret, Path destination) {
+
+            @Override
+            public void clone(String url, String username, char[] secret, Path destination) {
                 cloneRepository(url, username, secret, destination);
             }
-            @Override public void openRecent(String path) { openRepository(Path.of(path)); }
+
+            @Override
+            public void openRecent(String path) {
+                openRepository(Path.of(path));
+            }
         };
     }
 
@@ -1021,7 +1123,9 @@ public class GitPilotApplication extends Application {
         if (directory != null) openRepository(directory.toPath());
     }
 
-    private void openRepository(Path directory) { openRepository(directory, true); }
+    private void openRepository(Path directory) {
+        openRepository(directory, true);
+    }
 
     private void openRepository(Path directory, boolean remember) {
         String path = RepositoryTabManager.normalize(directory);
@@ -1104,7 +1208,10 @@ public class GitPilotApplication extends Application {
     }
 
     private void refreshRepository() {
-        if (repositoryService == null) { updateControls(); return; }
+        if (repositoryService == null) {
+            updateControls();
+            return;
+        }
         try {
             // The UI consumes one snapshot so its staged, unstaged, branch, and history views agree.
             RepositoryOperations.RepositoryState state = repositoryService.getState();
@@ -1186,7 +1293,10 @@ public class GitPilotApplication extends Application {
         logService.info(operation + " started.");
         setStatusText(operation + " in progress...");
         Task<String> task = new Task<>() {
-            @Override protected String call() throws Exception { return action.run(); }
+            @Override
+            protected String call() throws Exception {
+                return action.run();
+            }
         };
         task.setOnSucceeded(event -> {
             actionsMenuBusy = false;
@@ -1238,7 +1348,8 @@ public class GitPilotApplication extends Application {
         setStatusText("Clone in progress...");
         updateControls();
         Task<RepositoryOperations> task = new Task<>() {
-            @Override protected RepositoryOperations call() throws Exception {
+            @Override
+            protected RepositoryOperations call() throws Exception {
                 try {
                     RepositoryOperations service = repositoryServiceFactory.cloneRepository(
                             url, destination, username, secret);
@@ -1314,7 +1425,10 @@ public class GitPilotApplication extends Application {
     }
 
     private void showCommitDiff(RepositoryOperations.CommitEntry commit) {
-        if (commit == null) { workspace().showWorkingChanges(); return; }
+        if (commit == null) {
+            workspace().showWorkingChanges();
+            return;
+        }
         if (repositoryService == null) return;
         try {
             workspace().showCommit(repositoryService.getCommitFiles(commit.objectId()));
@@ -1336,7 +1450,10 @@ public class GitPilotApplication extends Application {
     }
 
     private void showStashDiff(RepositoryOperations.StashEntry stash) {
-        if (stash == null) { workspace().showWorkingChanges(); return; }
+        if (stash == null) {
+            workspace().showWorkingChanges();
+            return;
+        }
         if (repositoryService == null) return;
         try {
             workspace().showStash(repositoryService.getStashFiles(stash.objectId()));

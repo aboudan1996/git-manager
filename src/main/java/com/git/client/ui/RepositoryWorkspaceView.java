@@ -9,22 +9,8 @@ import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.*;
 import javafx.scene.input.MouseEvent;
-import javafx.scene.control.Button;
-import javafx.scene.control.ButtonBar;
-import javafx.scene.control.ButtonType;
-import javafx.scene.control.Alert;
-import javafx.scene.control.ContextMenu;
-import javafx.scene.control.Dialog;
-import javafx.scene.control.Label;
-import javafx.scene.control.ListCell;
-import javafx.scene.control.ListView;
-import javafx.scene.control.MenuItem;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.control.SelectionMode;
-import javafx.scene.control.Tab;
-import javafx.scene.control.TabPane;
-import javafx.scene.control.TextArea;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -65,6 +51,8 @@ final class RepositoryWorkspaceView {
         void stashSelected(RepositoryOperations.StashEntry stash);
         void stashFileSelected(RepositoryOperations.StashEntry stash, String path);
         void applyStash(RepositoryOperations.StashEntry stash, boolean dropAfterApply);
+        void deleteStash(RepositoryOperations.StashEntry stash);
+        void editStashMessage(RepositoryOperations.StashEntry stash, String newMessage);
     }
 
     private static final DateTimeFormatter COMMIT_DATE =
@@ -147,6 +135,7 @@ final class RepositoryWorkspaceView {
             }
         });
         configureStashes();
+        stashes.getStyleClass().add("stash-list");
         VBox stashesContent = new VBox(10, stashes, stashSearch);
         VBox.setVgrow(stashes, Priority.ALWAYS);
         Tab stashesTab = new Tab("Stashes", stashesContent);
@@ -239,7 +228,7 @@ final class RepositoryWorkspaceView {
         committedPane.getStyleClass().add("change-pane");
         setVisibleManaged(committedPane, false);
         stashedFiles.setPlaceholder(new Label("No files changed by this stash"));
-        stashedFiles.getStyleClass().add("change-list");
+        stashedFiles.getStyleClass().addAll("change-list", "committed-list");
         committedFiles.getStyleClass().addAll("change-list", "committed-list");
         stashedFiles.setPrefHeight(115);
         stashedFiles.setMinHeight(70);
@@ -271,7 +260,9 @@ final class RepositoryWorkspaceView {
         stashes.setCellFactory(list -> new ListCell<>() {
             private final MenuItem applyStash = new MenuItem("Apply selected stash");
             private final MenuItem popStash = new MenuItem("Pop selected stash");
-            private final ContextMenu stashMenu = new ContextMenu(applyStash, popStash);
+            private final MenuItem deleteStash = new MenuItem("Delete selected stash");
+            private final MenuItem editMessage = new MenuItem("Edit stash message");
+            private final ContextMenu stashMenu = new ContextMenu(applyStash, popStash, deleteStash, editMessage);
 
             {
                 stashMenu.setOnShowing(event ->
@@ -281,6 +272,33 @@ final class RepositoryWorkspaceView {
                 });
                 popStash.setOnAction(event -> {
                     if (getItem() != null) actions.applyStash(getItem(), true);
+                });
+                deleteStash.setOnAction(event -> {
+                    if (getItem() != null) actions.deleteStash(getItem());
+                });
+                editMessage.setOnAction(event -> {
+                    RepositoryOperations.StashEntry stash = getItem();
+                    if (stash == null) return;
+
+                    TextInputDialog dialog = new TextInputDialog(stash.message());
+                    dialog.initOwner(getScene().getWindow());
+                    dialog.setTitle("Edit stash message");
+                    dialog.setHeaderText("Edit the message of " + stash.reference());
+                    dialog.setContentText("Message:");
+
+                    // même thème que le reste de l'application
+                    dialog.getDialogPane().getStylesheets().addAll(getScene().getStylesheets());
+
+                    // OK désactivé tant que le champ est vide
+                    Node okButton = dialog.getDialogPane().lookupButton(ButtonType.OK);
+                    okButton.disableProperty().bind(
+                            dialog.getEditor().textProperty().map(text -> text.isBlank()));
+
+                    dialog.showAndWait()
+                            .map(String::trim)
+                            .filter(newMessage -> !newMessage.isEmpty())
+                            .filter(newMessage -> !newMessage.equals(stash.message()))
+                            .ifPresent(newMessage -> actions.editStashMessage(stash, newMessage));
                 });
                 setOnContextMenuRequested(event -> {
                     if (!isEmpty() && getItem() != null) {

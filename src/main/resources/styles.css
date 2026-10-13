@@ -880,3 +880,20 @@
 .commit-graph-list .commit-graph-cell:selected:hover {
     -fx-background-color: #34507a;
 }
+
+.stash-list .list-cell:filled:hover {
+    -fx-background-color: #2a3b52;
+}
+
+.stash-list .list-cell:filled:selected,
+.stash-list .list-cell:filled:selected:hover {
+    -fx-background-color: #34507a;
+}
+
+.activity-tabs > .tab-header-area {
+    -fx-padding: 0;
+}
+
+.activity-tabs .tab-label {
+    -fx-alignment: center;
+}

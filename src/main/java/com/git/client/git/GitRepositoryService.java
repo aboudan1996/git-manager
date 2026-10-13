@@ -6,16 +6,15 @@ import com.git.client.platform.WindowsCredentialStore;
 
 import org.eclipse.jgit.api.*;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.api.errors.PatchApplyException;
 import org.eclipse.jgit.api.errors.PatchFormatException;
 import org.eclipse.jgit.diff.DiffEntry;
-import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.PersonIdent;
-import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.patch.FileHeader;
 import org.eclipse.jgit.patch.Patch;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteConfig;
 import org.eclipse.jgit.transport.CredentialsProvider;
@@ -30,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.StreamSupport;
 
@@ -704,6 +704,92 @@ public final class GitRepositoryService implements RepositoryOperations {
         return updates.isBlank() ? "Push completed." : "Push completed.\n" + updates;
     }
 
+    private static final Pattern STASH_REF = Pattern.compile("stash@\\{(\\d+)}");
+
+    private record StashItem(ObjectId id, PersonIdent who, String comment) { }
+
+    @Override
+    public String editStashMessage(String stashReference, String newMessage)
+            throws IOException {
+        String message = newMessage == null ? "" : newMessage.trim();
+        if (message.isEmpty()) {
+            throw new IllegalArgumentException("The stash message cannot be empty.");
+        }
+        int index = resolveStashIndex(stashReference);
+
+        Repository repo = git.getRepository();
+        ReflogReader reader = repo.getReflogReader(Constants.R_STASH);
+        List<ReflogEntry> entries = reader == null ? List.of() : reader.getReverseEntries(); // du plus récent au plus ancien
+        if (index >= entries.size()) {
+            throw new IOException("Stash not found: " + stashReference);
+        }
+
+        // 1. Nouveau commit : même contenu, nouveau message
+        ObjectId newId;
+        try (RevWalk walk = new RevWalk(repo);
+             ObjectInserter inserter = repo.newObjectInserter()) {
+            RevCommit old = walk.parseCommit(entries.get(index).getNewId());
+            if (message.equals(old.getFullMessage().trim())) {
+                return "Stash message unchanged.";
+            }
+            CommitBuilder builder = new CommitBuilder();
+            builder.setTreeId(old.getTree().getId());
+            builder.setParentIds(old.getParents());
+            builder.setAuthor(old.getAuthorIdent());
+            builder.setCommitter(old.getCommitterIdent());
+            builder.setMessage(message);
+            newId = inserter.insert(builder);
+            inserter.flush();
+        }
+
+        // 2. Pile d'origine et pile modifiée, de la plus ancienne à la plus récente
+        List<StashItem> original = new ArrayList<>();
+        List<StashItem> updated = new ArrayList<>();
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            ReflogEntry entry = entries.get(i);
+            StashItem item = new StashItem(entry.getNewId(), entry.getWho(), entry.getComment());
+            original.add(item);
+            updated.add(i == index ? new StashItem(newId, entry.getWho(), message) : item);
+        }
+
+        // 3. Réécriture, avec retour arrière si quelque chose échoue
+        try {
+            rewriteStashStack(repo, updated);
+        } catch (IOException | RuntimeException e) {
+            try {
+                rewriteStashStack(repo, original);
+            } catch (IOException | RuntimeException restoreError) {
+                e.addSuppressed(restoreError);
+            }
+            throw e;
+        }
+        return "Stash message updated.";
+    }
+
+    private void rewriteStashStack(Repository repo, List<StashItem> items) throws IOException {
+        RefUpdate delete = repo.updateRef(Constants.R_STASH);
+        delete.setForceUpdate(true);
+        RefUpdate.Result deleted = delete.delete();
+        if (deleted != RefUpdate.Result.FORCED && deleted != RefUpdate.Result.NO_CHANGE) {
+            throw new IOException("Unable to rewrite the stash list: " + deleted);
+        }
+
+        for (StashItem item : items) {
+            RefUpdate update = repo.updateRef(Constants.R_STASH);
+            update.setNewObjectId(item.id());
+            update.setRefLogIdent(item.who());
+            update.setRefLogMessage(item.comment(), false);
+            update.setForceRefLog(true);   // <-- manquant : crée le reflog de refs/stash
+            update.setForceUpdate(true);
+            RefUpdate.Result result = update.update();
+            if (result != RefUpdate.Result.NEW
+                    && result != RefUpdate.Result.FAST_FORWARD
+                    && result != RefUpdate.Result.FORCED) {
+                throw new IOException("Unable to restore stash " + item.id().abbreviate(7).name()
+                        + ": " + result);
+            }
+        }
+    }
     @Override
     public String applyPatch(Path patchFile) throws IOException, GitAPIException {
         if (patchFile == null || !Files.isRegularFile(patchFile)) {
@@ -762,6 +848,52 @@ public final class GitRepositoryService implements RepositoryOperations {
                     "The patch does not apply to the current state of the repository: "
                             + e.getMessage(), e);
         }
+    }
+
+    private int resolveStashIndex(String stashId) throws IOException {
+        String ref = stashId == null ? "" : stashId.trim();
+        if (ref.isEmpty()) {
+            throw new IllegalArgumentException("No stash selected.");
+        }
+
+        // Format stash@{N}
+        Matcher matcher = STASH_REF.matcher(ref);
+        if (matcher.matches()) {
+            return Integer.parseInt(matcher.group(1));
+        }
+
+        // Format SHA (complet ou abrégé d'au moins 7 caractères)
+        if (ref.length() >= 7) {
+            ReflogReader reader = git.getRepository().getReflogReader(Constants.R_STASH);
+            if (reader != null) {
+                List<ReflogEntry> entries = reader.getReverseEntries(); // du plus récent au plus ancien
+                for (int i = 0; i < entries.size(); i++) {
+                    if (entries.get(i).getNewId().name().startsWith(ref)) {
+                        return i;
+                    }
+                }
+            }
+        }
+        throw new IllegalArgumentException("Stash not found: " + stashId);
+    }
+
+    @Override
+    public String dropStash(String stashId) throws GitAPIException {
+        int index;
+        try {
+            index = resolveStashIndex(stashId);
+        } catch (IOException e) {
+            throw new IllegalStateException("Unable to read the stash list: " + e.getMessage(), e);
+        }
+
+        try {
+            git.stashDrop()
+                    .setStashRef(index)
+                    .call();
+        } catch (JGitInternalException e) {
+            throw new IllegalStateException("Unable to drop the stash: " + e.getMessage(), e);
+        }
+        return "Stash dropped.";
     }
 
     private void rollbackPatch(Patch patch) {

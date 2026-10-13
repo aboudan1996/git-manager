@@ -114,6 +114,8 @@ public interface RepositoryOperations extends AutoCloseable {
 
     String push() throws GitAPIException, IOException;
 
+    String editStashMessage(String s, String newMessage) throws IOException;
+
     record RepositoryState(String branch, List<String> unstaged, List<String> staged) {
     }
 
@@ -150,4 +152,7 @@ public interface RepositoryOperations extends AutoCloseable {
     }
 
     String applyPatch(Path patchFile) throws IOException, GitAPIException;
+
+    String dropStash(String stashId) throws GitAPIException;
+
 }
