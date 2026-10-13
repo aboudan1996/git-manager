@@ -913,11 +913,11 @@
 }
 
 .toast-info    { -fx-border-color: #69a9ff; }
-.toast-success { -fx-border-color: #64d6b0; }
+.toast-success { -fx-border-color: #2bbbad; }
 .toast-warning { -fx-border-color: #f4b860; }
 .toast-error   { -fx-border-color: #ff7f9e; }
 
 .toast-info .toast-icon    { -fx-icon-color: #69a9ff; }
-.toast-success .toast-icon { -fx-icon-color: #64d6b0; }
+.toast-success .toast-icon { -fx-icon-color: #2bbbad; }
 .toast-warning .toast-icon { -fx-icon-color: #f4b860; }
 .toast-error .toast-icon   { -fx-icon-color: #ff7f9e; }

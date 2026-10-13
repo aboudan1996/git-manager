@@ -1255,12 +1255,14 @@ public class GitPilotApplication extends Application {
                     || "Resolve conflict".equals(operation);
             if (!inspectConflicts) {
                 setStatusText(operation + " completed successfully.");
+                toasts.success(operation + " completed successfully.");
                 logService.info(operation + " completed successfully.");
                 return;
             }
             List<String> conflicts = repositoryService.getConflictPaths();
             if (conflicts.isEmpty()) {
                 setStatusText(operation + " completed successfully.");
+                toasts.success(operation + " completed successfully.");
             } else {
                 if (isConflictOperation(operation)) {
                     setStatusText(operation + " paused for conflict resolution.");
@@ -1269,14 +1271,17 @@ public class GitPilotApplication extends Application {
             }
             if (conflicts.isEmpty()) {
                 logService.info(operation + " completed successfully.");
+                toasts.success(operation + " completed successfully.");
             } else {
                 logService.warning(operation + " left " + conflicts.size()
                         + " file(s) to resolve.");
+                toasts.warning(operation + " left " + conflicts.size() + " file(s) to resolve.");
             }
         } catch (IOException | GitAPIException | IllegalArgumentException exception) {
             logService.error(operation + " failed.", exception);
             setStatusText(operation + " failed: " + errorMessage(exception));
             showError("Git operation failed", exception);
+            toasts.error(operation + " failed, " + errorMessage(exception));
         }
     }
 
